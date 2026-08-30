@@ -1023,3 +1023,86 @@ include = [".xprofile"]
 		t.Fatalf("--only inactive did not show the path:\n%s", out)
 	}
 }
+
+// TestInitChecksOutBothStores guards a bootstrap failure that looks like
+// success: cloning the secret store without checking it out leaves the vault
+// in the repository but not on disk, so `apply` fails on a machine that did
+// fetch everything it needed.
+func TestInitChecksOutBothStores(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+
+	// Two origin repos, each with one file, standing in for config and secret.
+	origins := map[string]string{}
+	for name, file := range map[string]string{"config": ".bashrc", "secret": ".config/dotx/vault.age"} {
+		dir := filepath.Join(root, name+"-origin")
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, file)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, file), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{
+			{"init", "-q", "-b", "main"}, {"config", "user.email", "t@e.com"},
+			{"config", "user.name", "t"}, {"add", "-A"}, {"commit", "-q", "-m", "init"},
+		} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
+		}
+		origins[name] = dir
+	}
+
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+
+	flagManifest, flagJSON, flagDryRun = "", false, false
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{
+		"--manifest", filepath.Join(root, "dotx.toml"), "init",
+		"--clone-config", origins["config"],
+		"--clone-secret", origins["secret"],
+	})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	for _, want := range []string{".bashrc", ".config/dotx/vault.age"} {
+		if _, err := os.Stat(filepath.Join(home, want)); err != nil {
+			t.Fatalf("%s was not checked out: %v", want, err)
+		}
+	}
+}
+
+func TestRedactURLHidesAnEmbeddedToken(t *testing.T) {
+	// Bootstrapping a private store means putting a token in the clone URL;
+	// echoing it back would write the credential into the terminal and into
+	// whatever captures that output.
+	token := "gh" + "p_" + strings.Repeat("A1b2C3d4", 5)
+	got := redactURL("https://user:" + token + "@github.com/you/config.git")
+	if strings.Contains(got, token) {
+		t.Fatalf("redactURL leaked the token: %s", got)
+	}
+	if !strings.Contains(got, "github.com/you/config.git") {
+		t.Fatalf("redactURL mangled the URL: %s", got)
+	}
+
+	// A URL with no credential must survive untouched.
+	plain := "https://github.com/you/config.git"
+	if got := redactURL(plain); got != plain {
+		t.Fatalf("redactURL = %q, want the URL unchanged", got)
+	}
+	// A local path is not a URL at all.
+	if got := redactURL("/home/me/.config.repo"); got != "/home/me/.config.repo" {
+		t.Fatalf("redactURL mangled a path: %s", got)
+	}
+}

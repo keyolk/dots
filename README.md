@@ -335,10 +335,19 @@ git --git-dir=~/.config.repo --work-tree=$HOME remote set-url origin \
 ```
 
 **Reading the vault needs a key an existing machine must grant.** A clone into
-an empty `$HOME` checks out ~360 files and generates an age key, and then
-`apply` fails with *"identity did not match any of the recipients"*. That is
-the design working: add the new machine's public key to `secrets.recipients`
-from a machine that can already decrypt, re-save, push.
+an empty `$HOME` checks out 442 files across both stores — including the vault,
+the GPG keyring and the SSH keys — generates an age key, and then reports:
+
+```
+ok   store/config   339 tracked path(s)
+ok   store/secret   109 tracked path(s)
+FAIL vault          identity did not match any of the recipients
+ok   dotfiles       444 path(s) clean
+```
+
+That is the design working, and `doctor` names the single remaining step: add
+the new machine's public key to `secrets.recipients` from a machine that can
+already decrypt, re-save, push.
 
 Neither loop can be closed by the tool. One token and one key move by hand, and
 a tool that claimed otherwise would be shipping your credentials somewhere they

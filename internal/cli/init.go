@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -27,10 +28,16 @@ func newInitCmd() *cobra.Command {
 On a machine that already has the config and secret bare repos, it writes a
 manifest describing what is there and leaves everything else alone.
 
-On a fresh machine, --clone-config and --clone-secret fetch the repos, check
+On a fresh machine, --clone-config and --clone-secret fetch both repos, check
 them out over $HOME, and generate an age identity. The identity's public key is
 printed: add it to secrets.recipients from a machine that can already read the
 vault, re-save, and this machine can decrypt.
+
+Cloning a private store needs credentials, and on a machine set up this way
+those credentials live inside the store being cloned. Break that loop by
+putting a token in the clone URL for the first fetch, then resetting the
+remote to the plain URL. A token embedded in the URL is redacted from output,
+but it does land in shell history.
 
 The chicken-and-egg is real and deliberate: a new machine cannot read secrets
 until an existing one grants it access. There is no bootstrap path that does not
@@ -52,24 +59,32 @@ somewhere it should not be.`,
 			configDir := filepath.Join(home, ".config.repo")
 			secretDir := filepath.Join(home, ".secret.repo")
 
-			if configURL != "" {
-				fmt.Printf("cloning config store from %s\n", configURL)
-				r, err := git.Clone(configURL, configDir, home)
+			// Both stores are cloned and checked out. Leaving the secret store
+			// merely cloned would put its contents -- the vault among them --
+			// in the repository but not on disk, so `apply` would fail on a
+			// machine that had in fact fetched everything it needed.
+			for _, store := range []struct {
+				name, url, dir string
+			}{
+				{"config", configURL, configDir},
+				{"secret", secretURL, secretDir},
+			} {
+				if store.url == "" {
+					continue
+				}
+				fmt.Printf("cloning %s store from %s\n", store.name, redactURL(store.url))
+				r, err := git.Clone(store.url, store.dir, home)
 				if err != nil {
 					return err
 				}
 				if conflicts, err := r.Checkout(); err != nil {
-					fmt.Fprintf(os.Stderr, "\ncheckout blocked by %d existing file(s):\n", len(conflicts))
+					fmt.Fprintf(os.Stderr, "\n%s checkout blocked by %d existing file(s):\n",
+						store.name, len(conflicts))
 					for _, c := range conflicts {
 						fmt.Fprintf(os.Stderr, "  %s\n", c)
 					}
-					return fmt.Errorf("move or remove them, then run: git --git-dir=%s --work-tree=%s checkout", configDir, home)
-				}
-			}
-			if secretURL != "" {
-				fmt.Printf("cloning secret store from %s\n", secretURL)
-				if _, err := git.Clone(secretURL, secretDir, home); err != nil {
-					return err
+					return fmt.Errorf("move or remove them, then run: git --git-dir=%s --work-tree=%s checkout",
+						store.dir, home)
 				}
 			}
 
@@ -109,6 +124,20 @@ somewhere it should not be.`,
 	cmd.Flags().StringVar(&secretURL, "clone-secret", "", "clone the secret store from this URL")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing manifest")
 	return cmd
+}
+
+// redactURL hides an embedded credential. Bootstrapping a private store often
+// means putting a token in the clone URL, and echoing it back would write the
+// credential to the terminal and into whatever captures that output.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	if _, hasPassword := u.User.Password(); hasPassword {
+		u.User = url.UserPassword(u.User.Username(), "***")
+	}
+	return u.String()
 }
 
 // starterManifest emits a manifest that reflects this machine rather than a
