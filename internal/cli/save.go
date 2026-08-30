@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/keyolk/dots/internal/dotfile"
+	"github.com/keyolk/dots/internal/ui"
 )
 
 func newSaveCmd() *cobra.Command {
@@ -50,7 +51,8 @@ add applies.`,
 				if e.Store == "config" || e.Store == "" {
 					abs := m.Store.WorkTree + "/" + e.Path
 					if hit := scanSecrets(abs); hit != "" {
-						fmt.Fprintf(os.Stderr, "refused %s: %s\n", e.Path, hit)
+						fmt.Fprintf(os.Stderr, "%s %s: %s\n",
+							ui.Refused.Render("refused"), e.Path, ui.Muted.Render(hit))
 						blocked++
 						continue
 					}
@@ -93,7 +95,7 @@ add applies.`,
 				if !ok {
 					continue
 				}
-				fmt.Printf("%s: committed %d path(s)\n", store, len(paths))
+				fmt.Printf("%s: %s %d path(s)\n", store, ui.OK.Render("committed"), len(paths))
 
 				if push {
 					if err := repo.RunInteractive("push"); err != nil {

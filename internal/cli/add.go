@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/keyolk/dots/internal/dotfile"
+	"github.com/keyolk/dots/internal/ui"
 )
 
 // secretPatterns are the shapes that must never reach the config repo. They are
@@ -80,7 +81,8 @@ group in the manifest.`,
 				// is only meaningful for the config repo.
 				if e.Store == "config" && !asTmpl {
 					if hit := scanSecrets(abs); hit != "" {
-						fmt.Fprintf(os.Stderr, "refused %s: %s\n", e.Path, hit)
+						fmt.Fprintf(os.Stderr, "%s %s: %s\n",
+							ui.Refused.Render("refused"), e.Path, ui.Muted.Render(hit))
 						blocked++
 						continue
 					}
@@ -120,8 +122,8 @@ group in the manifest.`,
 					}
 					paths = kept
 
-					fmt.Fprintf(os.Stderr,
-						"\n%d path(s) are declared in the manifest but excluded by a .gitignore:\n", len(ignored))
+					fmt.Fprintf(os.Stderr, "\n%s\n", ui.Warn.Render(fmt.Sprintf(
+						"%d path(s) are declared in the manifest but excluded by a .gitignore:", len(ignored))))
 					for i, p := range ignored {
 						if i == 10 {
 							fmt.Fprintf(os.Stderr, "  … %d more\n", len(ignored)-10)
@@ -129,8 +131,8 @@ group in the manifest.`,
 						}
 						fmt.Fprintf(os.Stderr, "  %s\n", p)
 					}
-					fmt.Fprintln(os.Stderr,
-						"resolve the conflict: drop the ignore rule, or stop declaring the path")
+					fmt.Fprintln(os.Stderr, ui.Fix.Render(
+						"resolve the conflict: drop the ignore rule, or stop declaring the path"))
 				}
 				if len(paths) == 0 {
 					continue
@@ -141,7 +143,7 @@ group in the manifest.`,
 				}
 				fmt.Printf("%s: staged %d file(s)\n", store, len(paths))
 				for _, p := range paths {
-					fmt.Printf("  + %s\n", p)
+					fmt.Printf("  %s %s\n", ui.StateUntracked.Render("+"), p)
 				}
 				if !force {
 					continue
@@ -156,7 +158,8 @@ group in the manifest.`,
 			}
 
 			if blocked > 0 {
-				fmt.Fprintf(os.Stderr, "\n%d file(s) refused for credential content\n", blocked)
+				fmt.Fprintln(os.Stderr, ui.Refused.Render(fmt.Sprintf(
+					"\n%d file(s) refused for credential content", blocked)))
 			}
 			if !force {
 				fmt.Println("\nstaged only - run `dots save` to commit")

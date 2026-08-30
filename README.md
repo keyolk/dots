@@ -116,6 +116,13 @@ status that never finishes into one that takes 0.7s.
 `untracked` is the one a bare repo with `status.showUntrackedFiles=no` cannot
 produce, and it is where new hooks, skills and scripts accumulate.
 
+Colour marks the states that need action — yellow for modified, blue for
+untracked, red for missing — and `clean` is left unstyled on purpose: it is the
+overwhelming majority of any listing, and colouring it would bury the handful
+of lines worth reading. Every colour duplicates information the symbol already
+carries, so nothing is lost to colourblindness or to a pipe. Output off a
+terminal, or with `NO_COLOR` set, is plain text.
+
 `submodule` and `inactive` exist so `prune` cannot destroy things a file glob
 was never going to match. A gitlink is a commit pointer, so tpm, fisherman and
 vim-plug would otherwise read as undeclared; and a `.xprofile` declared by a

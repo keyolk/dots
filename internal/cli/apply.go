@@ -11,6 +11,7 @@ import (
 	"github.com/keyolk/dots/internal/manifest"
 	"github.com/keyolk/dots/internal/secret"
 	"github.com/keyolk/dots/internal/tmpl"
+	"github.com/keyolk/dots/internal/ui"
 )
 
 func newApplyCmd() *cobra.Command {
@@ -64,11 +65,12 @@ never tracked.`,
 					continue
 				}
 				if err := r.RenderFile(src, dst); err != nil {
-					fmt.Fprintf(os.Stderr, "  %s: %v\n", e.Path, err)
+					fmt.Fprintf(os.Stderr, "  %s %s: %v\n", ui.Fail.Render("✗"), e.Path, err)
 					failed++
 					continue
 				}
-				fmt.Printf("  %s -> %s\n", e.Path, tmpl.Target(e.Path))
+				fmt.Printf("  %s %s → %s\n", ui.OK.Render("✓"), e.Path,
+					ui.Heading.Render(tmpl.Target(e.Path)))
 				rendered++
 			}
 

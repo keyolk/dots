@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/keyolk/dots/internal/dotfile"
+	"github.com/keyolk/dots/internal/ui"
 )
 
 func newPruneCmd() *cobra.Command {
@@ -68,13 +69,14 @@ path in the manifest and running dots add puts it back.`,
 			total := 0
 			for store, paths := range byStore {
 				total += len(paths)
-				fmt.Printf("\n%s: %d undeclared path(s)\n", store, len(paths))
+				fmt.Printf("\n%s: %s\n", ui.Heading.Render(store),
+					ui.StateUndeclared.Render(fmt.Sprintf("%d undeclared path(s)", len(paths))))
 				for i, p := range paths {
 					if i == 15 {
-						fmt.Printf("  … %d more\n", len(paths)-15)
+						fmt.Println(ui.Muted.Render(fmt.Sprintf("  … %d more", len(paths)-15)))
 						break
 					}
-					fmt.Printf("  - %s\n", p)
+					fmt.Printf("  %s %s\n", ui.StateUndeclared.Render("-"), p)
 				}
 			}
 
@@ -100,7 +102,7 @@ path in the manifest and running dots add puts it back.`,
 						return err
 					}
 				}
-				fmt.Printf("%s: untracked %d path(s)\n", store, len(paths))
+				fmt.Printf("%s: %s %d path(s)\n", store, ui.Warn.Render("untracked"), len(paths))
 
 				if !commit {
 					continue

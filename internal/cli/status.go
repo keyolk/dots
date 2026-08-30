@@ -7,9 +7,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
 	"github.com/keyolk/dots/internal/dotfile"
+	"github.com/keyolk/dots/internal/ui"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -76,15 +78,36 @@ cannot produce, and it is where new hooks, skills and scripts accumulate.`,
 	return cmd
 }
 
+// styleFor maps a state to its marker style. Colour carries the same meaning
+// as the symbol, so a colourblind reader or a piped run loses nothing.
+func styleFor(s dotfile.State) lipgloss.Style {
+	switch s {
+	case dotfile.Modified:
+		return ui.StateModified
+	case dotfile.Untracked:
+		return ui.StateUntracked
+	case dotfile.Missing:
+		return ui.StateMissing
+	case dotfile.Undeclared:
+		return ui.StateUndeclared
+	case dotfile.Submodule, dotfile.Inactive:
+		return ui.StateStructural
+	case dotfile.Artifact:
+		return ui.StateArtifact
+	default:
+		return ui.StateClean
+	}
+}
+
 func printStatus(entries []dotfile.Entry, groupBy string) {
 	if len(entries) == 0 {
-		fmt.Println("clean - manifest, stores and disk agree")
+		fmt.Println(ui.OK.Render("clean") + " - manifest, stores and disk agree")
 		return
 	}
 
 	if groupBy == "none" {
 		for _, e := range entries {
-			fmt.Printf(" %s %s\n", e.State.Symbol(), e.Path)
+			fmt.Printf(" %s %s\n", styleFor(e.State).Render(e.State.Symbol()), e.Path)
 		}
 		printSummary(entries)
 		return
@@ -103,7 +126,7 @@ func printStatus(entries []dotfile.Entry, groupBy string) {
 
 	for _, k := range keys {
 		items := buckets[k]
-		fmt.Printf("\n%s (%d)\n", k, len(items))
+		fmt.Printf("\n%s %s\n", ui.Heading.Render(k), ui.Count.Render(fmt.Sprintf("(%d)", len(items))))
 		// A group with hundreds of entries is a fact to report, not a wall of
 		// text to print: the count is the actionable part, the paths are one
 		// `--group-by none` away.
@@ -112,10 +135,10 @@ func printStatus(entries []dotfile.Entry, groupBy string) {
 			limit = 20
 		}
 		for _, e := range items[:limit] {
-			fmt.Printf("  %s %s\n", e.State.Symbol(), e.Path)
+			fmt.Printf("  %s %s\n", styleFor(e.State).Render(e.State.Symbol()), e.Path)
 		}
 		if len(items) > limit {
-			fmt.Printf("  … %d more\n", len(items)-limit)
+			fmt.Println(ui.Muted.Render(fmt.Sprintf("  … %d more", len(items)-limit)))
 		}
 	}
 	printSummary(entries)
@@ -146,7 +169,7 @@ func printSummary(entries []dotfile.Entry) {
 	var parts []string
 	for _, s := range []dotfile.State{dotfile.Modified, dotfile.Untracked, dotfile.Missing, dotfile.Undeclared} {
 		if counts[s] > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", counts[s], s))
+			parts = append(parts, styleFor(s).Render(fmt.Sprintf("%d %s", counts[s], s)))
 		}
 	}
 	if len(parts) > 0 {

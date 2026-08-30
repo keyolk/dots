@@ -14,6 +14,7 @@ import (
 	"github.com/keyolk/dots/internal/manifest"
 	"github.com/keyolk/dots/internal/pkgmgr"
 	"github.com/keyolk/dots/internal/secret"
+	"github.com/keyolk/dots/internal/ui"
 )
 
 // check is one diagnostic with a fix the user can act on.
@@ -168,21 +169,26 @@ func checkPath() check {
 
 func printChecks(checks []check) {
 	for _, c := range checks {
-		fmt.Printf("%s %-14s %s\n", mark(c.status), c.name, c.detail)
+		// Padding has to happen inside the style: %-14s counts the ANSI escape
+		// bytes as characters, so a styled name pushes the detail column out
+		// of alignment by however long the escape sequence is.
+		fmt.Printf("%s %s %s\n", mark(c.status), ui.Heading.Width(14).Render(c.name), c.detail)
 		if c.fix != "" {
-			fmt.Printf("               → %s\n", c.fix)
+			fmt.Println(ui.Fix.Render("               → " + c.fix))
 		}
 	}
 }
 
+// mark renders the verdict. The width is fixed at four columns so the names
+// line up whichever verdicts a run produces.
 func mark(status string) string {
 	switch status {
 	case "ok":
-		return "ok  "
+		return ui.OK.Render("ok  ")
 	case "warn":
-		return "warn"
+		return ui.Warn.Render("warn")
 	default:
-		return "FAIL"
+		return ui.Fail.Render("FAIL")
 	}
 }
 

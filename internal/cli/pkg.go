@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/keyolk/dots/internal/pkgmgr"
+	"github.com/keyolk/dots/internal/ui"
 )
 
 func newPkgCmd() *cobra.Command {
@@ -45,27 +46,29 @@ func newPkgDiffCmd() *cobra.Command {
 			var totalMissing, totalExtra int
 			for _, d := range diffs {
 				if !d.Available {
-					fmt.Printf("%-8s unavailable on this machine\n", d.Source)
+					fmt.Printf("%s %s\n", ui.Heading.Width(8).Render(d.Source),
+						ui.Muted.Render("unavailable on this machine"))
 					continue
 				}
 				totalMissing += len(d.Missing)
 				totalExtra += len(d.Extra)
 
-				fmt.Printf("%-8s %d managed", d.Source, d.Managed)
+				fmt.Printf("%s %s", ui.Heading.Width(8).Render(d.Source),
+					ui.OK.Render(fmt.Sprintf("%d managed", d.Managed)))
 				if len(d.Missing) > 0 {
-					fmt.Printf(", %d missing", len(d.Missing))
+					fmt.Printf(", %s", ui.StateMissing.Render(fmt.Sprintf("%d missing", len(d.Missing))))
 				}
 				if len(d.Extra) > 0 {
-					fmt.Printf(", %d undeclared", len(d.Extra))
+					fmt.Printf(", %s", ui.StateUndeclared.Render(fmt.Sprintf("%d undeclared", len(d.Extra))))
 				}
 				fmt.Println()
 
 				for _, p := range d.Missing {
-					fmt.Printf("    - %s\n", p)
+					fmt.Printf("    %s %s\n", ui.StateMissing.Render("-"), p)
 				}
 				if showExtra {
 					for _, p := range d.Extra {
-						fmt.Printf("    + %s\n", p)
+						fmt.Printf("    %s %s\n", ui.StateUndeclared.Render("+"), p)
 					}
 				}
 			}
@@ -204,14 +207,14 @@ reproduces it instead of leaving a file whose origin nobody remembers.`,
 			if len(states) > 0 {
 				fmt.Printf("declared binaries (%d)\n", len(states))
 				for _, s := range states {
-					mark := "ok"
+					mark := ui.OK.Width(8).Render("ok")
 					if !s.Present {
-						mark = "MISSING"
+						mark = ui.Fail.Width(8).Render("MISSING")
 						missing++
 					}
-					fmt.Printf("  %-8s %-20s %s\n", mark, s.Name, s.Version)
+					fmt.Printf("  %s %-20s %s\n", mark, s.Name, ui.Muted.Render(s.Version))
 					if !s.Present && s.Install != "" {
-						fmt.Printf("           install: %s\n", s.Install)
+						fmt.Println(ui.Fix.Render("           install: " + s.Install))
 					}
 				}
 			}
@@ -227,7 +230,7 @@ reproduces it instead of leaving a file whose origin nobody remembers.`,
 			if len(undeclared) > 0 {
 				fmt.Printf("\nundeclared in %s (%d)\n", dir, len(undeclared))
 				for _, u := range undeclared {
-					fmt.Printf("  ? %s\n", u)
+					fmt.Printf("  %s %s\n", ui.StateUntracked.Render("?"), u)
 				}
 				fmt.Println("\ndeclare each with a [[packages.<source>.binaries]] entry recording where it came from")
 			}

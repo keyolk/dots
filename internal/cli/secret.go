@@ -12,6 +12,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/keyolk/dots/internal/secret"
+	"github.com/keyolk/dots/internal/ui"
 )
 
 func newSecretCmd() *cobra.Command {
@@ -55,7 +56,7 @@ func newSecretListCmd() *cobra.Command {
 			}
 			keys := v.Keys()
 			if len(keys) == 0 {
-				fmt.Println("vault is empty")
+				fmt.Println(ui.Muted.Render("vault is empty"))
 				return nil
 			}
 			for _, k := range keys {
@@ -133,7 +134,7 @@ is stored.`,
 			if err := v.Save(); err != nil {
 				return err
 			}
-			fmt.Printf("stored %s\n", args[0])
+			fmt.Printf("%s %s\n", ui.OK.Render("stored"), args[0])
 			return nil
 		},
 	}
@@ -159,7 +160,7 @@ func newSecretRmCmd() *cobra.Command {
 			if err := v.Save(); err != nil {
 				return err
 			}
-			fmt.Printf("removed %s\n", args[0])
+			fmt.Printf("%s %s\n", ui.Warn.Render("removed"), args[0])
 			return nil
 		},
 	}
