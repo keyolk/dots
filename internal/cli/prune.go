@@ -16,7 +16,6 @@ func newPruneCmd() *cobra.Command {
 	var (
 		commit bool
 		yes    bool
-		only   string
 	)
 
 	cmd := &cobra.Command{
@@ -44,40 +43,26 @@ path in the manifest and running dots add puts it back.`,
 				return err
 			}
 
-			byStore := map[string][]string{}
+			var paths []string
 			for _, e := range entries {
-				if e.State != dotfile.Undeclared {
-					continue
+				if e.State == dotfile.Undeclared {
+					paths = append(paths, e.Path)
 				}
-				// The two stores hold very different risk: config accumulates
-				// generated junk, while secret holds material that is merely
-				// not declared yet. Pruning them separately is the norm.
-				if only != "" && e.Store != only {
-					continue
-				}
-				byStore[e.Store] = append(byStore[e.Store], e.Path)
 			}
-			if len(byStore) == 0 {
-				if only != "" {
-					fmt.Printf("nothing to prune in the %s store\n", only)
-					return nil
-				}
+			if len(paths) == 0 {
 				fmt.Println("nothing to prune - every tracked path is declared")
 				return nil
 			}
 
-			total := 0
-			for store, paths := range byStore {
-				total += len(paths)
-				fmt.Printf("\n%s: %s\n", ui.Heading.Render(store),
-					ui.StateUndeclared.Render(fmt.Sprintf("%d undeclared path(s)", len(paths))))
-				for i, p := range paths {
-					if i == 15 {
-						fmt.Println(ui.Muted.Render(fmt.Sprintf("  … %d more", len(paths)-15)))
-						break
-					}
-					fmt.Printf("  %s %s\n", ui.StateUndeclared.Render("-"), p)
+			total := len(paths)
+			fmt.Println(ui.StateUndeclared.Render(
+				fmt.Sprintf("%d undeclared path(s)", total)))
+			for i, p := range paths {
+				if i == 15 {
+					fmt.Println(ui.Muted.Render(fmt.Sprintf("  … %d more", total-15)))
+					break
 				}
+				fmt.Printf("  %s %s\n", ui.StateUndeclared.Render("-"), p)
 			}
 
 			if flagDryRun {
@@ -92,27 +77,23 @@ path in the manifest and running dots add puts it back.`,
 				return nil
 			}
 
-			for store, paths := range byStore {
-				repo := sc.Repo(store)
-				// git rm takes the paths as arguments, and a store with
-				// thousands of undeclared entries would overflow ARG_MAX in one
-				// call.
-				for _, batch := range chunk(paths, 500) {
-					if err := repo.Remove(batch...); err != nil {
-						return err
-					}
+			repo := sc.Repo()
+			// git rm takes the paths as arguments, and a store with thousands
+			// of undeclared entries would overflow ARG_MAX in one call.
+			for _, batch := range chunk(paths, 500) {
+				if err := repo.Remove(batch...); err != nil {
+					return err
 				}
-				fmt.Printf("%s: %s %d path(s)\n", store, ui.Warn.Render("untracked"), len(paths))
+			}
+			fmt.Printf("%s %d path(s)\n", ui.Warn.Render("untracked"), total)
 
-				if !commit {
-					continue
-				}
-				ok, err := repo.Commit(fmt.Sprintf("dots: untrack %d undeclared path(s)", len(paths)))
+			if commit {
+				ok, err := repo.Commit(fmt.Sprintf("dots: untrack %d undeclared path(s)", total))
 				if err != nil {
 					return err
 				}
 				if ok {
-					fmt.Printf("%s: committed\n", store)
+					fmt.Println(ui.OK.Render("committed"))
 				}
 			}
 
@@ -126,7 +107,6 @@ path in the manifest and running dots add puts it back.`,
 	cmd.Flags().BoolVarP(&flagDryRun, "dry-run", "n", false, "list what would be untracked without doing it")
 	cmd.Flags().BoolVar(&commit, "commit", false, "commit immediately instead of leaving changes staged")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
-	cmd.Flags().StringVar(&only, "store", "", "restrict to one store: config or secret")
 	return cmd
 }
 

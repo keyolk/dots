@@ -108,7 +108,9 @@ type Entry struct {
 	Path string
 	// Group is the manifest group that claimed it, empty when Undeclared.
 	Group string
-	// Store is which repo holds it: "config" or "secret".
+	// Store names the group's sensitivity: "secret" for a group exempt from
+	// the credential scan, "config" otherwise. It no longer selects a
+	// repository -- there is only one.
 	Store string
 	State State
 	// Template is true when Path is a `.tmpl` source rather than a live file.
@@ -120,8 +122,7 @@ type Scanner struct {
 	m    *manifest.Manifest
 	host string
 
-	config *git.Repo
-	secret *git.Repo
+	repo *git.Repo
 
 	// subRoots caches the gitlink paths, so the walk can prune them. A
 	// submodule is its own repository: its files belong to that repo, and
@@ -132,10 +133,9 @@ type Scanner struct {
 // NewScanner builds a scanner over the manifest's two stores.
 func NewScanner(m *manifest.Manifest, host string) *Scanner {
 	return &Scanner{
-		m:      m,
-		host:   host,
-		config: git.New(m.Store.Config, m.Store.WorkTree),
-		secret: git.New(m.Store.Secret, m.Store.WorkTree),
+		m:    m,
+		host: host,
+		repo: git.New(m.Store.Config, m.Store.WorkTree),
 	}
 }
 
@@ -158,22 +158,20 @@ func (s *Scanner) isArtifact(rel string) bool {
 	return isCompiledBinary(abs)
 }
 
-// submoduleRoots returns the gitlink paths across both stores, cached.
+// submoduleRoots returns the gitlink paths, cached.
 func (s *Scanner) submoduleRoots() map[string]bool {
 	if s.subRoots != nil {
 		return s.subRoots
 	}
 	s.subRoots = map[string]bool{}
-	for _, repo := range []*git.Repo{s.config, s.secret} {
-		subs, err := repo.Submodules()
-		if err != nil {
-			// A store that cannot be queried simply contributes no roots; the
-			// scan still runs, and the paths surface as ordinary entries.
-			continue
-		}
-		for _, sub := range subs {
-			s.subRoots[sub] = true
-		}
+	subs, err := s.repo.Submodules()
+	if err != nil {
+		// A store that cannot be queried simply contributes no roots; the scan
+		// still runs, and the paths surface as ordinary entries.
+		return s.subRoots
+	}
+	for _, sub := range subs {
+		s.subRoots[sub] = true
 	}
 	return s.subRoots
 }
@@ -185,48 +183,36 @@ func (s *Scanner) Scan() ([]Entry, error) {
 		return nil, err
 	}
 
-	tracked := map[string]string{} // path -> store
-	for _, r := range []struct {
-		name string
-		repo *git.Repo
-	}{{"config", s.config}, {"secret", s.secret}} {
-		files, err := r.repo.LsFiles()
-		if err != nil {
-			return nil, fmt.Errorf("%s store: %w", r.name, err)
-		}
-		for _, f := range files {
-			tracked[f] = r.name
-		}
+	files, err := s.repo.LsFiles()
+	if err != nil {
+		return nil, fmt.Errorf("store: %w", err)
+	}
+	tracked := make(map[string]bool, len(files))
+	for _, f := range files {
+		tracked[f] = true
 	}
 
 	// Modified sets are queried once per repo rather than per file: shelling
 	// out to `git diff` for each of ~2000 paths is the difference between a
 	// 70ms status and a multi-second one.
-	modified := map[string]bool{}
-	for _, repo := range []*git.Repo{s.config, s.secret} {
-		mod, err := repo.Modified()
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range mod {
-			modified[f] = true
-		}
+	mod, err := s.repo.Modified()
+	if err != nil {
+		return nil, err
+	}
+	modified := make(map[string]bool, len(mod))
+	for _, f := range mod {
+		modified[f] = true
 	}
 
 	// Gitlinks are collected up front so the undeclared sweep below cannot
 	// mistake a submodule for a leftover.
-	submodules := map[string]string{} // path -> store
-	for _, r := range []struct {
-		name string
-		repo *git.Repo
-	}{{"config", s.config}, {"secret", s.secret}} {
-		subs, err := r.repo.Submodules()
-		if err != nil {
-			return nil, fmt.Errorf("%s store submodules: %w", r.name, err)
-		}
-		for _, sub := range subs {
-			submodules[sub] = r.name
-		}
+	subs, err := s.repo.Submodules()
+	if err != nil {
+		return nil, fmt.Errorf("store submodules: %w", err)
+	}
+	submodules := make(map[string]bool, len(subs))
+	for _, sub := range subs {
+		submodules[sub] = true
 	}
 
 	seen := map[string]bool{}
@@ -235,7 +221,7 @@ func (s *Scanner) Scan() ([]Entry, error) {
 	for path, d := range declared {
 		seen[path] = true
 		e := Entry{Path: path, Group: d.group, Store: d.store, Template: d.template}
-		store, isTracked := tracked[path]
+		isTracked := tracked[path]
 		switch {
 		case d.artifact && !isTracked:
 			// An untracked artifact is a manifest bug to fix, not something to
@@ -245,33 +231,32 @@ func (s *Scanner) Scan() ([]Entry, error) {
 		case !isTracked:
 			e.State = Untracked
 		case modified[path]:
-			e.Store = store
 			e.State = Modified
 		default:
-			e.Store = store
 			e.State = Clean
 		}
 		out = append(out, e)
 	}
 
-	// Anything the store carries that the manifest no longer claims.
-	for path, store := range tracked {
+	// Anything the store carries that the manifest no longer claims. These have
+	// no declaring group, so no sensitivity to report either.
+	for path := range tracked {
 		if seen[path] {
 			continue
 		}
-		if subStore, ok := submodules[path]; ok {
-			out = append(out, Entry{Path: path, Store: subStore, State: Submodule})
+		if submodules[path] {
+			out = append(out, Entry{Path: path, State: Submodule})
 			continue
 		}
 		if name := claimedByInactiveGroup(inactiveGroups, path); name != "" {
-			out = append(out, Entry{Path: path, Group: name, Store: store, State: Inactive})
+			out = append(out, Entry{Path: path, Group: name, State: Inactive})
 			continue
 		}
 		st := Undeclared
 		if _, err := os.Lstat(filepath.Join(s.m.Store.WorkTree, path)); err != nil {
 			st = Missing
 		}
-		out = append(out, Entry{Path: path, Store: store, State: st})
+		out = append(out, Entry{Path: path, State: st})
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
@@ -592,13 +577,8 @@ func isUnder(path, ancestor string) bool {
 	return strings.HasPrefix(path, ancestor+"/")
 }
 
-// Repo returns the store repo for a given store name.
-func (s *Scanner) Repo(store string) *git.Repo {
-	if store == "secret" {
-		return s.secret
-	}
-	return s.config
-}
+// Repo returns the store.
+func (s *Scanner) Repo() *git.Repo { return s.repo }
 
 // WalkOrphans finds files on disk under a group's include roots that no group
 // claims. It answers "what did I create and never declare?" — the complement of

@@ -65,7 +65,7 @@ group in the manifest.`,
 				want[filepath.Clean(a)] = true
 			}
 
-			byStore := map[string][]string{}
+			var paths []string
 			var blocked int
 
 			for _, e := range entries {
@@ -77,9 +77,10 @@ group in the manifest.`,
 				}
 				abs := filepath.Join(m.Store.WorkTree, e.Path)
 
-				// A secret-group file is expected to hold credentials; the scan
-				// is only meaningful for the config repo.
-				if e.Store == "config" && !asTmpl {
+				// A secret-group file holds credentials by design -- ~/.ssh and
+				// ~/.gnupg are the point, not an accident -- so the scan would
+				// only ever refuse the files that most need tracking.
+				if e.Store != "secret" && !asTmpl {
 					if hit := scanSecrets(abs); hit != "" {
 						fmt.Fprintf(os.Stderr, "%s %s: %s\n",
 							ui.Refused.Render("refused"), e.Path, ui.Muted.Render(hit))
@@ -87,10 +88,10 @@ group in the manifest.`,
 						continue
 					}
 				}
-				byStore[e.Store] = append(byStore[e.Store], e.Path)
+				paths = append(paths, e.Path)
 			}
 
-			if len(byStore) == 0 {
+			if len(paths) == 0 {
 				if blocked > 0 {
 					return fmt.Errorf("%d file(s) refused, nothing added", blocked)
 				}
@@ -98,8 +99,8 @@ group in the manifest.`,
 				return nil
 			}
 
-			for store, paths := range byStore {
-				repo := sc.Repo(store)
+			{
+				repo := sc.Repo()
 
 				// A path the manifest declares and a .gitignore excludes is a
 				// conflict git resolves by failing the whole batch, so one
@@ -135,25 +136,25 @@ group in the manifest.`,
 						"resolve the conflict: drop the ignore rule, or stop declaring the path"))
 				}
 				if len(paths) == 0 {
-					continue
+					fmt.Println("nothing to add")
+					return nil
 				}
 
 				if err := repo.Add(paths...); err != nil {
 					return err
 				}
-				fmt.Printf("%s: staged %d file(s)\n", store, len(paths))
+				fmt.Printf("staged %d file(s)\n", len(paths))
 				for _, p := range paths {
 					fmt.Printf("  %s %s\n", ui.StateUntracked.Render("+"), p)
 				}
-				if !force {
-					continue
-				}
-				ok, err := repo.Commit(fmt.Sprintf("dots: add %d file(s)", len(paths)))
-				if err != nil {
-					return err
-				}
-				if ok {
-					fmt.Printf("%s: committed\n", store)
+				if force {
+					ok, err := repo.Commit(fmt.Sprintf("dots: add %d file(s)", len(paths)))
+					if err != nil {
+						return err
+					}
+					if ok {
+						fmt.Println(ui.OK.Render("committed"))
+					}
 				}
 			}
 

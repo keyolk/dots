@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -40,7 +41,7 @@ add applies.`,
 				return err
 			}
 
-			byStore := map[string][]string{}
+			var paths []string
 			var blocked int
 			for _, e := range entries {
 				switch e.State {
@@ -48,8 +49,10 @@ add applies.`,
 				default:
 					continue
 				}
-				if e.Store == "config" || e.Store == "" {
-					abs := m.Store.WorkTree + "/" + e.Path
+				// A secret-group file holds credentials by design, so the scan
+				// would only refuse the files that most need tracking.
+				if e.Store != "secret" {
+					abs := filepath.Join(m.Store.WorkTree, e.Path)
 					if hit := scanSecrets(abs); hit != "" {
 						fmt.Fprintf(os.Stderr, "%s %s: %s\n",
 							ui.Refused.Render("refused"), e.Path, ui.Muted.Render(hit))
@@ -57,22 +60,18 @@ add applies.`,
 						continue
 					}
 				}
-				store := e.Store
-				if store == "" {
-					store = "config"
-				}
-				byStore[store] = append(byStore[store], e.Path)
+				paths = append(paths, e.Path)
 			}
 
 			// Paths gone from disk still need their deletion recorded, or the
 			// store keeps resurrecting them on the next machine.
 			for _, e := range entries {
 				if e.State == dotfile.Missing {
-					byStore[e.Store] = append(byStore[e.Store], e.Path)
+					paths = append(paths, e.Path)
 				}
 			}
 
-			if len(byStore) == 0 {
+			if len(paths) == 0 {
 				fmt.Println("nothing to save")
 				return blockedErr(blocked)
 			}
@@ -80,26 +79,22 @@ add applies.`,
 				message = "dots: sync"
 			}
 
-			for store, paths := range byStore {
-				repo := sc.Repo(store)
-				// `git add -A` on the listed paths records modifications,
-				// additions and deletions in one call.
-				args := append([]string{"add", "-A", "--"}, paths...)
-				if _, err := repo.Run(args...); err != nil {
-					return err
-				}
-				ok, err := repo.Commit(message)
-				if err != nil {
-					return err
-				}
-				if !ok {
-					continue
-				}
-				fmt.Printf("%s: %s %d path(s)\n", store, ui.OK.Render("committed"), len(paths))
-
+			repo := sc.Repo()
+			// `git add -A` on the listed paths records modifications, additions
+			// and deletions in one call.
+			addArgs := append([]string{"add", "-A", "--"}, paths...)
+			if _, err := repo.Run(addArgs...); err != nil {
+				return err
+			}
+			ok, err := repo.Commit(message)
+			if err != nil {
+				return err
+			}
+			if ok {
+				fmt.Printf("%s %d path(s)\n", ui.OK.Render("committed"), len(paths))
 				if push {
 					if err := repo.RunInteractive("push"); err != nil {
-						return fmt.Errorf("%s: push: %w", store, err)
+						return fmt.Errorf("push: %w", err)
 					}
 				}
 			}

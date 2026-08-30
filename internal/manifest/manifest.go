@@ -28,16 +28,25 @@ type Manifest struct {
 	Packages map[string]*PkgList `toml:"packages"`
 }
 
-// Store locates the git repositories that hold tracked content. dots keeps the
+// Store locates the git repository that holds tracked content. dots keeps the
 // existing bare-repo-over-$HOME layout rather than inventing a source tree:
-// migrating 2000 tracked paths into a new directory is a cost with no payoff,
-// and `config`/`secret` keep working while dots is adopted.
+// migrating thousands of tracked paths into a new directory is a cost with no
+// payoff, and the `config` alias keeps working while dots is adopted.
+//
+// There is one repo, not one per sensitivity. A second "secret" store only
+// pays for itself if the first can be public, and a store holding SSH private
+// keys and a kubeconfig cannot be — so the split bought nothing while costing
+// two remotes, two clones, two pushes and a store column in every listing.
+// What actually keeps credentials out of the wrong place is the credential
+// scan on add/save, which reads file contents and does not care how many
+// repositories exist.
 type Store struct {
-	// Config is the bare repo holding non-secret dotfiles.
+	// Config is the bare repo holding every tracked path.
 	Config string `toml:"config"`
-	// Secret is the bare repo holding encrypted material.
+	// Secret is the legacy second store. Kept only so an existing manifest
+	// still loads; dots reports it and ignores it.
 	Secret string `toml:"secret"`
-	// WorkTree is the checkout root both repos apply to.
+	// WorkTree is the checkout root the repo applies to.
 	WorkTree string `toml:"work_tree"`
 }
 
@@ -70,8 +79,10 @@ type Group struct {
 	// Host restricts the group to matching hostnames. Empty means all.
 	Host []string `toml:"host"`
 
-	// Secret marks the whole group as secret-bearing: it is stored in the
-	// secret repo, encrypted, rather than in the config repo.
+	// Secret marks the group as holding credentials by design, which exempts
+	// it from the credential scan that add and save apply. Holding secrets is
+	// the job of ~/.ssh and ~/.gnupg; refusing them would make dots unusable
+	// for exactly the files that most need tracking.
 	Secret bool `toml:"secret"`
 
 	// Template marks paths in this group as Go templates rendered on apply.

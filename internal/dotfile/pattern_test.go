@@ -111,18 +111,10 @@ func TestIsUnderIdentifiesDescendants(t *testing.T) {
 	}
 }
 
-func TestScannerRepoSelectsTheNamedStore(t *testing.T) {
+func TestScannerRepoReturnsTheStore(t *testing.T) {
 	f := newFixture(t)
 	sc := NewScanner(f.m, "testhost")
-	if sc.Repo("secret").GitDir != f.m.Store.Secret {
-		t.Fatal("Repo(\"secret\") did not return the secret store")
-	}
-	// Anything other than "secret" must fall back to config rather than
-	// returning nil, which would panic at the call site.
-	if sc.Repo("config").GitDir != f.m.Store.Config {
-		t.Fatal("Repo(\"config\") did not return the config store")
-	}
-	if sc.Repo("").GitDir != f.m.Store.Config {
-		t.Fatal("Repo(\"\") did not fall back to the config store")
+	if sc.Repo().GitDir != f.m.Store.Config {
+		t.Fatal("Repo did not return the configured store")
 	}
 }

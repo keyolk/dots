@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -70,26 +69,28 @@ sources are consistent, and what to run for each thing that is not.`,
 
 func checkStores(m *manifest.Manifest) []check {
 	var out []check
-	for _, s := range []struct{ name, dir string }{
-		{"store/config", m.Store.Config},
-		{"store/secret", m.Store.Secret},
-	} {
-		if s.dir == "" {
-			out = append(out, check{s.name, "warn", "not configured", "set store." + strings.TrimPrefix(s.name, "store/") + " in the manifest"})
-			continue
-		}
-		r := git.New(s.dir, m.Store.WorkTree)
-		if !r.Exists() {
-			out = append(out, check{s.name, "fail", s.dir + " does not exist",
-				"dots init --clone <url>"})
-			continue
-		}
-		files, err := r.LsFiles()
-		if err != nil {
-			out = append(out, check{s.name, "fail", err.Error(), ""})
-			continue
-		}
-		out = append(out, check{s.name, "ok", fmt.Sprintf("%d tracked path(s)", len(files)), ""})
+	if m.Store.Config == "" {
+		return append(out, check{"store", "warn", "not configured",
+			"set store.config in the manifest"})
+	}
+	r := git.New(m.Store.Config, m.Store.WorkTree)
+	if !r.Exists() {
+		return append(out, check{"store", "fail", m.Store.Config + " does not exist",
+			"dots init --clone-config <url>"})
+	}
+	files, err := r.LsFiles()
+	if err != nil {
+		return append(out, check{"store", "fail", err.Error(), ""})
+	}
+	out = append(out, check{"store", "ok", fmt.Sprintf("%d tracked path(s)", len(files)), ""})
+
+	// A manifest carried over from the two-store layout still names a second
+	// repo. Say so rather than ignoring it silently, since its contents are no
+	// longer being tracked by anything.
+	if m.Store.Secret != "" {
+		out = append(out, check{"store/secret", "warn",
+			"a second store is configured but no longer used",
+			"merge its contents into store.config, then drop store.secret"})
 	}
 	return out
 }

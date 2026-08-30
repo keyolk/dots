@@ -16,7 +16,6 @@ import (
 func newInitCmd() *cobra.Command {
 	var (
 		configURL string
-		secretURL string
 		force     bool
 	)
 
@@ -28,8 +27,8 @@ func newInitCmd() *cobra.Command {
 On a machine that already has the config and secret bare repos, it writes a
 manifest describing what is there and leaves everything else alone.
 
-On a fresh machine, --clone-config and --clone-secret fetch both repos, check
-them out over $HOME, and generate an age identity. The identity's public key is
+On a fresh machine, --clone-config fetches the store, checks it out over $HOME,
+and generates an age identity. The identity's public key is
 printed: add it to secrets.recipients from a machine that can already read the
 vault, re-save, and this machine can decrypt.
 
@@ -57,34 +56,25 @@ somewhere it should not be.`,
 			}
 
 			configDir := filepath.Join(home, ".config.repo")
-			secretDir := filepath.Join(home, ".secret.repo")
 
-			// Both stores are cloned and checked out. Leaving the secret store
-			// merely cloned would put its contents -- the vault among them --
-			// in the repository but not on disk, so `apply` would fail on a
-			// machine that had in fact fetched everything it needed.
-			for _, store := range []struct {
-				name, url, dir string
-			}{
-				{"config", configURL, configDir},
-				{"secret", secretURL, secretDir},
-			} {
-				if store.url == "" {
-					continue
-				}
-				fmt.Printf("cloning %s store from %s\n", store.name, redactURL(store.url))
-				r, err := git.Clone(store.url, store.dir, home)
+			// The store is cloned and checked out. Leaving it merely cloned
+			// would put its contents -- the vault among them -- in the
+			// repository but not on disk, so `apply` would fail on a machine
+			// that had in fact fetched everything it needed.
+			if configURL != "" {
+				fmt.Printf("cloning store from %s\n", redactURL(configURL))
+				r, err := git.Clone(configURL, configDir, home)
 				if err != nil {
 					return err
 				}
 				if conflicts, err := r.Checkout(); err != nil {
-					fmt.Fprintf(os.Stderr, "\n%s checkout blocked by %d existing file(s):\n",
-						store.name, len(conflicts))
+					fmt.Fprintf(os.Stderr, "\ncheckout blocked by %d existing file(s):\n",
+						len(conflicts))
 					for _, c := range conflicts {
 						fmt.Fprintf(os.Stderr, "  %s\n", c)
 					}
 					return fmt.Errorf("move or remove them, then run: git --git-dir=%s --work-tree=%s checkout",
-						store.dir, home)
+						configDir, home)
 				}
 			}
 
@@ -100,7 +90,7 @@ somewhere it should not be.`,
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return err
 			}
-			body := starterManifest(configDir, secretDir, home, identity, pub)
+			body := starterManifest(configDir, home, identity, pub)
 			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 				return err
 			}
@@ -121,7 +111,6 @@ somewhere it should not be.`,
 	}
 
 	cmd.Flags().StringVar(&configURL, "clone-config", "", "clone the config store from this URL")
-	cmd.Flags().StringVar(&secretURL, "clone-secret", "", "clone the secret store from this URL")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing manifest")
 	return cmd
 }
@@ -143,7 +132,7 @@ func redactURL(raw string) string {
 // starterManifest emits a manifest that reflects this machine rather than a
 // generic example: the groups below are the ones that were measurably
 // mistracked here, so a first `dots status` reports something true.
-func starterManifest(configDir, secretDir, home, identity, pub string) string {
+func starterManifest(configDir, home, identity, pub string) string {
 	recipients := ""
 	if pub != "" {
 		recipients = fmt.Sprintf("%q", pub)
@@ -158,7 +147,6 @@ func starterManifest(configDir, secretDir, home, identity, pub string) string {
 
 [store]
 config    = %q
-secret    = %q
 work_tree = %q
 
 [secrets]
@@ -262,7 +250,8 @@ exclude = [
 
 [[dotfiles]]
 name    = "git"
-include = [".gitconfig", ".themes.gitconfig", ".config/pass-git-helper/**/*", ".gitmodules"]
+include = [".gitconfig", ".themes.gitconfig", ".config/pass-git-helper/**/*",
+           ".gitmodules", ".gitattributes"]
 exclude = [".config/pass-git-helper/*.bak.*"]
 
 # Tool configs that live outside the groups above. Each is hand-written config
@@ -421,5 +410,5 @@ packages = []
 # from    = "https://github.com/coder/coder"
 # install = "curl -fsSL https://coder.com/install.sh | sh"
 # version = "%%s --version"
-`, configDir, secretDir, home, identity, recipients)
+`, configDir, home, identity, recipients)
 }

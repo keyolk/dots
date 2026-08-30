@@ -85,7 +85,7 @@ os   = ["linux"]              # or host = ["work-laptop"]
 
 [[dotfiles]]
 name   = "credentials"
-secret = true                 # goes to the secret store, not config
+secret = true                 # exempt from the credential scan
 
 [[dotfiles]]
 name     = "templated"
@@ -165,8 +165,8 @@ in `config.fish`, and `.gitconfig` wires `pass-git-helper` as the git credential
 helper that dispatches a different GitHub token per org. Switching would take
 out `git push` to buy nothing dots needs.
 
-The GPG key already lives in the secret store, so a new machine already has a
-path to restore it. Moving two keys instead of one is not the cost worth
+The GPG key already lives in the store, so a new machine already has a path to
+restore it. Moving two keys instead of one is not the cost worth
 optimising.
 
 Adding a second machine means adding its public key to `recipients` and
@@ -181,15 +181,13 @@ no manifest group claims. Files are only untracked, never deleted.
 
 ```
 dots prune -n                    # list what would be untracked
-dots prune --store secret        # one store at a time
 dots prune -y --commit           # do it
 ```
 
-The two stores are pruned separately by design. A config store accumulates
-generated junk that is safe to drop, while an undeclared path in the *secret*
-store may be real key material that simply has not been declared yet — on this
-machine that was 67 `.password-store` entries, five SSH keys and the `.secret`
-tree, none of which should have been untracked. Declare first, prune second.
+Declare first, prune second. An undeclared path is not automatically junk: on
+this machine the first dry run listed 67 `.password-store` entries, five SSH
+keys and the whole `.secret` tree — all real, none declared yet. The dry run
+exists so that list gets read before anything is untracked.
 
 ### GPG as the worked example
 
@@ -300,9 +298,8 @@ On a machine that has nothing:
 # 1. Get dots. git and a Go toolchain are the only prerequisites.
 go install github.com/keyolk/dots@latest
 
-# 2. Clone both stores.
-dots init --clone-config https://github.com/you/config.git \
-          --clone-secret https://github.com/you/secret.git
+# 2. Clone the store.
+dots init --clone-config https://github.com/you/config.git
 
 # 3. init prints this machine's new age public key. From a machine that can
 #    already decrypt, append it to secrets.recipients and re-save the vault:
@@ -331,28 +328,26 @@ reasoning about it.
 
 **Cloning a private store needs credentials that live in the store.** Here the
 git credential helper is `pass-git-helper`, which reads `~/.password-store`,
-which is decrypted by a GPG key — and all three are inside the secret repo you
-are trying to clone. `git clone` into a clean `$HOME` fails with *"could not
+which is decrypted by a GPG key — and all three are inside the repo you are
+trying to clone. `git clone` into a clean `$HOME` fails with *"could not
 read Username for 'https://github.com'"*. Break the loop with a token in the
 clone URL for the first fetch:
 
 ```
 TOKEN=<a personal access token>
-dots init --clone-config "https://user:$TOKEN@github.com/you/config.git" \
-          --clone-secret "https://user:$TOKEN@github.com/you/secret.git"
+dots init --clone-config "https://user:$TOKEN@github.com/you/config.git"
 git --git-dir=~/.config.repo --work-tree=$HOME remote set-url origin \
     https://github.com/you/config.git      # drop the token afterwards
 ```
 
 **Reading the vault needs a key an existing machine must grant.** A clone into
-an empty `$HOME` checks out 442 files across both stores — including the vault,
-the GPG keyring and the SSH keys — generates an age key, and then reports:
+an empty `$HOME` checks out the store — including the vault, the GPG keyring
+and the SSH keys — generates an age key, and then reports:
 
 ```
-ok   store/config   339 tracked path(s)
-ok   store/secret   109 tracked path(s)
+ok   store          449 tracked path(s)
 FAIL vault          identity did not match any of the recipients
-ok   dotfiles       444 path(s) clean
+ok   dotfiles       445 path(s) clean
 ```
 
 That is the design working, and `doctor` names the single remaining step: add

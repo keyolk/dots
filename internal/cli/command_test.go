@@ -225,10 +225,12 @@ func TestAddStillStagesCleanFilesAlongsideARefusedOne(t *testing.T) {
 	}
 }
 
-func TestAddRoutesASecretGroupFileToTheSecretStore(t *testing.T) {
+// TestSecretGroupFileSkipsTheCredentialScan is why the `secret = true` flag
+// still exists after the two stores were merged: ~/.ssh and ~/.gnupg hold
+// credentials by design, and scanning them would refuse exactly the files that
+// most need tracking.
+func TestSecretGroupFileSkipsTheCredentialScan(t *testing.T) {
 	e := newEnv(t, baseManifest)
-	// A file in a secret group is expected to hold credentials, so the scan
-	// must not apply to it.
 	token := "gh" + "p_" + strings.Repeat("Z9y8X7w6", 5)
 	e.write(".config/hub", "oauth_token: "+token+"\n")
 
@@ -239,12 +241,12 @@ func TestAddRoutesASecretGroupFileToTheSecretStore(t *testing.T) {
 	if strings.Contains(out, "refused") {
 		t.Fatalf("a secret-group file was refused:\n%s", out)
 	}
-	if !strings.Contains(out, "secret") {
-		t.Fatalf("the file was not routed to the secret store:\n%s", out)
+	if !strings.Contains(out, ".config/hub") {
+		t.Fatalf("the file was not staged:\n%s", out)
 	}
 }
 
-func TestSaveCommitsToTheRightStore(t *testing.T) {
+func TestSaveCommitsToTheStore(t *testing.T) {
 	e := newEnv(t, baseManifest)
 	e.write(".bashrc", "export A=1\n")
 
@@ -252,8 +254,8 @@ func TestSaveCommitsToTheRightStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "config") {
-		t.Fatalf("save did not report a config-store commit:\n%s", out)
+	if !strings.Contains(out, "committed") {
+		t.Fatalf("save did not report a commit:\n%s", out)
 	}
 
 	// The commit must be real, not just reported.
@@ -426,7 +428,7 @@ func TestDoctorReportsStoreAndDotfileState(t *testing.T) {
 	e.write(".bashrc", "x\n")
 
 	out, _ := e.run("doctor")
-	for _, want := range []string{"manifest", "store/config", "dotfiles", "packages", "path"} {
+	for _, want := range []string{"manifest", "store", "dotfiles", "packages", "path"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("doctor omitted the %s check:\n%s", want, out)
 		}
@@ -780,10 +782,10 @@ func TestSaveWithNothingToDoSaysSo(t *testing.T) {
 
 // track commits a path directly through git, bypassing the manifest, to set up
 // the "tracked but no longer declared" state prune exists to clean.
-func (e *env) track(store, rel, body string) {
+func (e *env) track(rel, body string) {
 	e.t.Helper()
 	e.write(rel, body)
-	dir := filepath.Join(e.root, store+".repo")
+	dir := filepath.Join(e.root, "config.repo")
 	for _, args := range [][]string{
 		{"--git-dir=" + dir, "--work-tree=" + e.work, "add", "--", rel},
 		{"--git-dir=" + dir, "--work-tree=" + e.work, "commit", "-q", "-m", "seed"},
@@ -796,7 +798,7 @@ func (e *env) track(store, rel, body string) {
 
 func TestPruneUntracksAnUndeclaredPath(t *testing.T) {
 	e := newEnv(t, baseManifest)
-	e.track("config", ".spin/.watchman-cookie-1", "junk\n")
+	e.track(".spin/.watchman-cookie-1", "junk\n")
 
 	out, err := e.run("prune", "-y", "--commit")
 	if err != nil {
@@ -818,7 +820,7 @@ func TestPruneUntracksAnUndeclaredPath(t *testing.T) {
 // untracking ~/.gnupg/random_seed must not remove the file gpg depends on.
 func TestPruneNeverDeletesFromDisk(t *testing.T) {
 	e := newEnv(t, baseManifest)
-	e.track("config", ".gnupg/random_seed", "entropy\n")
+	e.track(".gnupg/random_seed", "entropy\n")
 	onDisk := filepath.Join(e.work, ".gnupg/random_seed")
 
 	if _, err := e.run("prune", "-y", "--commit"); err != nil {
@@ -836,8 +838,8 @@ func TestPruneNeverDeletesFromDisk(t *testing.T) {
 
 func TestPruneLeavesDeclaredPathsAlone(t *testing.T) {
 	e := newEnv(t, baseManifest)
-	e.track("config", ".bashrc", "export A=1\n") // declared by the shell group
-	e.track("config", ".spin/junk", "x\n")       // declared by nothing
+	e.track(".bashrc", "export A=1\n") // declared by the shell group
+	e.track(".spin/junk", "x\n")       // declared by nothing
 
 	if _, err := e.run("prune", "-y", "--commit"); err != nil {
 		t.Fatalf("prune: %v", err)
@@ -859,7 +861,7 @@ func TestPruneLeavesDeclaredPathsAlone(t *testing.T) {
 
 func TestPruneDryRunChangesNothing(t *testing.T) {
 	e := newEnv(t, baseManifest)
-	e.track("config", ".spin/junk", "x\n")
+	e.track(".spin/junk", "x\n")
 
 	out, err := e.run("prune", "-n")
 	if err != nil {
@@ -881,7 +883,7 @@ func TestPruneDryRunChangesNothing(t *testing.T) {
 // piped invocation from untracking thousands of paths unattended.
 func TestPruneRefusesWithoutConfirmationWhenNotATerminal(t *testing.T) {
 	e := newEnv(t, baseManifest)
-	e.track("config", ".spin/junk", "x\n")
+	e.track(".spin/junk", "x\n")
 
 	out, err := e.run("prune")
 	if err != nil {
@@ -933,51 +935,6 @@ func lens(xss [][]string) []int {
 	return out
 }
 
-// TestPruneStoreFilterIsolatesOneStore matters because the two stores carry
-// different risk: config accumulates generated junk that is safe to untrack,
-// while an undeclared path in the secret store may be real key material that
-// simply has not been declared yet.
-func TestPruneStoreFilterIsolatesOneStore(t *testing.T) {
-	e := newEnv(t, baseManifest)
-	e.track("config", ".spin/junk", "x\n")
-	e.track("secret", ".gnupg/random_seed", "entropy\n")
-
-	out, err := e.run("prune", "-y", "--commit", "--store", "secret")
-	if err != nil {
-		t.Fatalf("prune --store secret: %v\n%s", err, out)
-	}
-	if strings.Contains(out, ".spin/junk") {
-		t.Fatalf("--store secret touched the config store:\n%s", out)
-	}
-
-	cfg, _ := exec.Command("git",
-		"--git-dir="+filepath.Join(e.root, "config.repo"),
-		"--work-tree="+e.work, "ls-files").Output()
-	if !strings.Contains(string(cfg), ".spin/junk") {
-		t.Fatal("--store secret untracked a config-store path")
-	}
-
-	sec, _ := exec.Command("git",
-		"--git-dir="+filepath.Join(e.root, "secret.repo"),
-		"--work-tree="+e.work, "ls-files").Output()
-	if strings.Contains(string(sec), "random_seed") {
-		t.Fatal("--store secret did not untrack its own store's path")
-	}
-}
-
-func TestPruneStoreFilterWithNothingToDoNamesTheStore(t *testing.T) {
-	e := newEnv(t, baseManifest)
-	e.track("config", ".spin/junk", "x\n")
-
-	out, err := e.run("prune", "--store", "secret")
-	if err != nil {
-		t.Fatalf("prune: %v\n%s", err, out)
-	}
-	if !strings.Contains(out, "secret store") {
-		t.Fatalf("the message does not name the filtered store:\n%s", out)
-	}
-}
-
 // TestPruneLeavesInactiveGroupPathsAlone is the cross-machine safety property:
 // running prune on a Mac must not untrack the Linux-only config that a
 // linux-constrained group declares.
@@ -988,10 +945,10 @@ name    = "linux-desktop"
 os      = ["plan9"]
 include = [".xprofile"]
 `)
-	e.track("config", ".xprofile", "export GTK_IM_MODULE=kime\n")
-	e.track("config", ".spin/junk", "x\n")
+	e.track(".xprofile", "export GTK_IM_MODULE=kime\n")
+	e.track(".spin/junk", "x\n")
 
-	if _, err := e.run("prune", "-y", "--commit", "--store", "config"); err != nil {
+	if _, err := e.run("prune", "-y", "--commit"); err != nil {
 		t.Fatalf("prune: %v", err)
 	}
 
@@ -1013,7 +970,7 @@ name    = "linux-desktop"
 os      = ["plan9"]
 include = [".xprofile"]
 `)
-	e.track("config", ".xprofile", "x\n")
+	e.track(".xprofile", "x\n")
 
 	out, err := e.run("status", "--only", "inactive")
 	if err != nil {
@@ -1024,37 +981,34 @@ include = [".xprofile"]
 	}
 }
 
-// TestInitChecksOutBothStores guards a bootstrap failure that looks like
-// success: cloning the secret store without checking it out leaves the vault
-// in the repository but not on disk, so `apply` fails on a machine that did
-// fetch everything it needed.
-func TestInitChecksOutBothStores(t *testing.T) {
+// TestInitChecksOutTheStore guards a bootstrap failure that looks like success:
+// cloning without checking out leaves the vault in the repository but not on
+// disk, so `apply` fails on a machine that did fetch everything it needed.
+func TestInitChecksOutTheStore(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
 	root := t.TempDir()
 
-	// Two origin repos, each with one file, standing in for config and secret.
-	origins := map[string]string{}
-	for name, file := range map[string]string{"config": ".bashrc", "secret": ".config/dots/vault.age"} {
-		dir := filepath.Join(root, name+"-origin")
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, file)), 0o755); err != nil {
+	origin := filepath.Join(root, "origin")
+	for _, f := range []string{".bashrc", ".config/dots/vault.age"} {
+		p := filepath.Join(origin, f)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, file), []byte("x\n"), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte("x\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		for _, args := range [][]string{
-			{"init", "-q", "-b", "main"}, {"config", "user.email", "t@e.com"},
-			{"config", "user.name", "t"}, {"add", "-A"}, {"commit", "-q", "-m", "init"},
-		} {
-			cmd := exec.Command("git", args...)
-			cmd.Dir = dir
-			if out, err := cmd.CombinedOutput(); err != nil {
-				t.Fatalf("git %v: %v\n%s", args, err, out)
-			}
+	}
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"}, {"config", "user.email", "t@e.com"},
+		{"config", "user.name", "t"}, {"add", "-A"}, {"commit", "-q", "-m", "init"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = origin
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
-		origins[name] = dir
 	}
 
 	home := filepath.Join(root, "home")
@@ -1067,8 +1021,7 @@ func TestInitChecksOutBothStores(t *testing.T) {
 	cmd := newRootCmd()
 	cmd.SetArgs([]string{
 		"--manifest", filepath.Join(root, "dots.toml"), "init",
-		"--clone-config", origins["config"],
-		"--clone-secret", origins["secret"],
+		"--clone-config", origin,
 	})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
