@@ -329,7 +329,8 @@ exclude  = [
 # every group: .ccproxy/config.json holds a live token and must never reach the
 # config store. Only its .tmpl is tracked.
 
-# Material that is secret in whole. Stored in the secret repo.
+# Material that is secret in whole. Exempt from the credential scan on
+# add/save, since holding credentials is what these paths are for.
 [[dotfiles]]
 name    = "credentials"
 secret  = true
