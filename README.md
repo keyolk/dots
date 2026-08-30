@@ -290,14 +290,17 @@ missing" — otherwise `sync` would act on a lie and reinstall the world.
 On a machine that has nothing:
 
 ```
-# 1. git and dots must exist first; everything else comes from the stores.
+# 1. Get dots. git and a Go toolchain are the only prerequisites.
+go install github.com/keyolk/dots@latest
+
+# 2. Clone both stores.
 dots init --clone-config https://github.com/you/config.git \
           --clone-secret https://github.com/you/secret.git
 
-# 2. init prints this machine's new age public key. From a machine that can
+# 3. init prints this machine's new age public key. From a machine that can
 #    already decrypt, append it to secrets.recipients and re-save the vault:
 #      dots secret set <any-existing-key> "$(dots secret get <any-existing-key>)"
-#    then push. Until that happens, step 4 fails by design.
+#    then push. Until that happens, the apply below fails by design.
 
 dots doctor          # what is inconsistent
 dots pkg sync        # install the declared packages
