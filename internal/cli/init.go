@@ -245,7 +245,7 @@ exclude = [
   ".local/bin/{herdr,r53-record-collector,narwhal,narwhal-bin,agent-cast}",
   ".local/bin/{ccproxy,k7s,tweb,tweb-tauri,tweb-pane,twebd,cs,netscope}",
   ".local/bin/{envoyscope,browserctl,twm,warp,websocat4,kiro-cli}",
-  ".local/bin/{kiro-cli-chat,kiro-cli-term,record-classifier,cship}",
+  ".local/bin/{kiro-cli-chat,kiro-cli-term,record-classifier,cship,tmc}",
 ]
 
 [[dotfiles]]
