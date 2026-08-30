@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/dotfile"
+	"github.com/keyolk/dots/internal/dotfile"
 )
 
 func newPruneCmd() *cobra.Command {
@@ -31,7 +31,7 @@ built for that was 2110 watchman cookies under .spin and a .gnupg/random_seed
 that gpg rewrites on every invocation.
 
 Files are only untracked, never removed from the filesystem. Re-declaring a
-path in the manifest and running dotx add puts it back.`,
+path in the manifest and running dots add puts it back.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			m, err := load()
 			if err != nil {
@@ -105,7 +105,7 @@ path in the manifest and running dotx add puts it back.`,
 				if !commit {
 					continue
 				}
-				ok, err := repo.Commit(fmt.Sprintf("dotx: untrack %d undeclared path(s)", len(paths)))
+				ok, err := repo.Commit(fmt.Sprintf("dots: untrack %d undeclared path(s)", len(paths)))
 				if err != nil {
 					return err
 				}
@@ -115,7 +115,7 @@ path in the manifest and running dotx add puts it back.`,
 			}
 
 			if !commit {
-				fmt.Println("\nstaged only - run `dotx save` to commit")
+				fmt.Println("\nstaged only - run `dots save` to commit")
 			}
 			return nil
 		},

@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/pkgmgr"
+	"github.com/keyolk/dots/internal/pkgmgr"
 )
 
 func newPkgCmd() *cobra.Command {
@@ -72,10 +72,10 @@ func newPkgDiffCmd() *cobra.Command {
 
 			fmt.Println()
 			if totalMissing > 0 {
-				fmt.Printf("%d package(s) missing - run `dotx pkg sync`\n", totalMissing)
+				fmt.Printf("%d package(s) missing - run `dots pkg sync`\n", totalMissing)
 			}
 			if totalExtra > 0 && !showExtra {
-				fmt.Printf("%d package(s) installed but undeclared - see `dotx pkg diff --extra`, adopt with `dotx pkg adopt`\n", totalExtra)
+				fmt.Printf("%d package(s) installed but undeclared - see `dots pkg diff --extra`, adopt with `dots pkg adopt`\n", totalExtra)
 			}
 			return nil
 		},

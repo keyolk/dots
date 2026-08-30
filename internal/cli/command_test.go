@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// env is a fully isolated dotx installation: its own work tree, its own bare
+// env is a fully isolated dots installation: its own work tree, its own bare
 // stores, its own manifest and vault. Nothing here touches the developer's real
 // $HOME, which matters because these tests run commands that commit and write.
 type env struct {
@@ -35,7 +35,7 @@ func newEnv(t *testing.T, manifestBody string) *env {
 		if out, err := exec.Command("git", "init", "--bare", "-q", dir).CombinedOutput(); err != nil {
 			t.Fatalf("git init %s: %v\n%s", name, err, out)
 		}
-		for _, kv := range [][2]string{{"user.email", "t@example.com"}, {"user.name", "dotx test"}} {
+		for _, kv := range [][2]string{{"user.email", "t@example.com"}, {"user.name", "dots test"}} {
 			cmd := exec.Command("git", "--git-dir="+dir, "--work-tree="+work, "config", kv[0], kv[1])
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("git config: %v\n%s", err, out)
@@ -48,7 +48,7 @@ func newEnv(t *testing.T, manifestBody string) *env {
 		"{{work}}", work,
 	).Replace(manifestBody)
 
-	mpath := filepath.Join(root, "dotx.toml")
+	mpath := filepath.Join(root, "dots.toml")
 	if err := os.WriteFile(mpath, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func (e *env) write(rel, body string) {
 	}
 }
 
-// run executes one dotx command through the real cobra tree and captures its
+// run executes one dots command through the real cobra tree and captures its
 // output, so the tests exercise flag parsing and command wiring rather than
 // calling internals directly.
 func (e *env) run(args ...string) (string, error) {
@@ -485,7 +485,7 @@ func TestMissingManifestSuggestsInit(t *testing.T) {
 		t.Fatal("a missing manifest produced no error")
 	}
 	if !strings.Contains(err.Error(), "init") {
-		t.Fatalf("error %q does not point at `dotx init`", err)
+		t.Fatalf("error %q does not point at `dots init`", err)
 	}
 }
 
@@ -521,7 +521,7 @@ packages = ["missing-package"]
 
 func TestInitWritesAUsableManifest(t *testing.T) {
 	dir := t.TempDir()
-	target := filepath.Join(dir, "dotx.toml")
+	target := filepath.Join(dir, "dots.toml")
 
 	flagManifest, flagJSON, flagDryRun = "", false, false
 	root := newRootCmd()
@@ -532,7 +532,7 @@ func TestInitWritesAUsableManifest(t *testing.T) {
 		t.Fatalf("init: %v", err)
 	}
 
-	// The generated manifest must itself load, or `dotx init` hands the user a
+	// The generated manifest must itself load, or `dots init` hands the user a
 	// broken starting point.
 	flagManifest = ""
 	root = newRootCmd()
@@ -554,7 +554,7 @@ func TestInitWritesAUsableManifest(t *testing.T) {
 
 func TestInitRefusesToOverwriteWithoutForce(t *testing.T) {
 	dir := t.TempDir()
-	target := filepath.Join(dir, "dotx.toml")
+	target := filepath.Join(dir, "dots.toml")
 	if err := os.WriteFile(target, []byte("# existing\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1036,7 +1036,7 @@ func TestInitChecksOutBothStores(t *testing.T) {
 
 	// Two origin repos, each with one file, standing in for config and secret.
 	origins := map[string]string{}
-	for name, file := range map[string]string{"config": ".bashrc", "secret": ".config/dotx/vault.age"} {
+	for name, file := range map[string]string{"config": ".bashrc", "secret": ".config/dots/vault.age"} {
 		dir := filepath.Join(root, name+"-origin")
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, file)), 0o755); err != nil {
 			t.Fatal(err)
@@ -1066,7 +1066,7 @@ func TestInitChecksOutBothStores(t *testing.T) {
 	flagManifest, flagJSON, flagDryRun = "", false, false
 	cmd := newRootCmd()
 	cmd.SetArgs([]string{
-		"--manifest", filepath.Join(root, "dotx.toml"), "init",
+		"--manifest", filepath.Join(root, "dots.toml"), "init",
 		"--clone-config", origins["config"],
 		"--clone-secret", origins["secret"],
 	})
@@ -1076,7 +1076,7 @@ func TestInitChecksOutBothStores(t *testing.T) {
 		t.Fatalf("init: %v", err)
 	}
 
-	for _, want := range []string{".bashrc", ".config/dotx/vault.age"} {
+	for _, want := range []string{".bashrc", ".config/dots/vault.age"} {
 		if _, err := os.Stat(filepath.Join(home, want)); err != nil {
 			t.Fatalf("%s was not checked out: %v", want, err)
 		}

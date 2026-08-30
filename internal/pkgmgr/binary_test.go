@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/keyolk/dotx/internal/manifest"
+	"github.com/keyolk/dots/internal/manifest"
 )
 
 func TestGoBinDirHonoursGOBIN(t *testing.T) {

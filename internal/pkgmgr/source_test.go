@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/keyolk/dotx/internal/manifest"
+	"github.com/keyolk/dots/internal/manifest"
 )
 
 // TestParseNormalisesEachSourceOutput uses the real output shapes of each tool.
@@ -242,7 +242,7 @@ func TestUndeclaredBinariesTreatsPackageNamesAsDeclared(t *testing.T) {
 }
 
 func TestUndeclaredBinariesOnMissingDirIsNotAnError(t *testing.T) {
-	// A machine with no ~/.local/bin yet must not fail `dotx pkg bin`.
+	// A machine with no ~/.local/bin yet must not fail `dots pkg bin`.
 	got, err := UndeclaredBinaries(&manifest.Manifest{}, filepath.Join(t.TempDir(), "absent"))
 	if err != nil {
 		t.Fatalf("UndeclaredBinaries: %v", err)

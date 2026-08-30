@@ -1,6 +1,6 @@
 // Package git wraps the bare-repo-over-$HOME pattern the existing config and
-// secret repos already use, so dotx builds on that layout instead of migrating
-// it. Adopting dotx must not invalidate the shell aliases still in muscle
+// secret repos already use, so dots builds on that layout instead of migrating
+// it. Adopting dots must not invalidate the shell aliases still in muscle
 // memory, and the two repos keep their history untouched.
 package git
 
@@ -120,7 +120,7 @@ func (r *Repo) Modified() ([]string, error) {
 	}
 	// diff-files covers unstaged edits; diff-index --cached covers staged ones.
 	// Using status --porcelain instead would also surface untracked files,
-	// which this repo is configured to hide and which dotx resolves from the
+	// which this repo is configured to hide and which dots resolves from the
 	// manifest rather than from git.
 	unstaged, err := r.Run("diff-files", "--name-only", "-z")
 	if err != nil {
@@ -222,7 +222,7 @@ func Clone(url, gitDir, workTree string) (*Repo, error) {
 		return nil, fmt.Errorf("clone %s: %w", url, err)
 	}
 	r := New(gitDir, workTree)
-	// Untracked files stay hidden: dotx resolves "should this be tracked?" from
+	// Untracked files stay hidden: dots resolves "should this be tracked?" from
 	// the manifest, and a bare repo over $HOME that reports untracked files
 	// reports the entire home directory.
 	if _, err := r.Run("config", "status.showUntrackedFiles", "no"); err != nil {

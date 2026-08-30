@@ -27,7 +27,7 @@ func newTestVault(t *testing.T) (*Vault, string) {
 
 func TestOpenMissingVaultIsEmptyNotAnError(t *testing.T) {
 	// A machine that has an identity but has never stored a secret must be
-	// able to run `dotx secret set` rather than having to create the file
+	// able to run `dots secret set` rather than having to create the file
 	// out of band first.
 	v, _ := newTestVault(t)
 	if got := len(v.Keys()); got != 0 {
@@ -238,7 +238,7 @@ func TestExtraRecipientCanAlsoDecrypt(t *testing.T) {
 }
 
 // publicKeyOf reads the public key GenerateIdentity recorded in the comment
-// header, which is the same thing a user copies out of `dotx secret keygen`.
+// header, which is the same thing a user copies out of `dots secret keygen`.
 func publicKeyOf(t *testing.T, identityPath string) string {
 	t.Helper()
 	b, err := os.ReadFile(identityPath)

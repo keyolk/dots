@@ -95,7 +95,7 @@ func (r *Renderer) RenderFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dst), ".dotx-*")
+	tmp, err := os.CreateTemp(filepath.Dir(dst), ".dots-*")
 	if err != nil {
 		return err
 	}

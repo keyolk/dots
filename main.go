@@ -1,4 +1,4 @@
-// Command dotx manages dotfiles, secrets and packages from one manifest.
+// Command dots manages dotfiles, secrets and packages from one manifest.
 package main
 
 import (
@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/keyolk/dotx/internal/cli"
+	"github.com/keyolk/dots/internal/cli"
 )
 
 // version is set at build time via -ldflags.
@@ -27,7 +27,7 @@ func main() {
 		if errors.Is(err, context.Canceled) {
 			os.Exit(130)
 		}
-		fmt.Fprintln(os.Stderr, "dotx: "+err.Error())
+		fmt.Fprintln(os.Stderr, "dots: "+err.Error())
 		os.Exit(1)
 	}
 }

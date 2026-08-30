@@ -1,4 +1,4 @@
-// Package cli implements dotx's command-line interface.
+// Package cli implements dots's command-line interface.
 package cli
 
 import (
@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/manifest"
+	"github.com/keyolk/dots/internal/manifest"
 )
 
 // Global flags shared by every command.
@@ -28,9 +28,9 @@ func ExecuteContext(ctx context.Context) error {
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "dotx",
+		Use:   "dots",
 		Short: "Declarative dotfile, secret and package management",
-		Long: `dotx manages a machine from one declarative manifest.
+		Long: `dots manages a machine from one declarative manifest.
 
 A dotfile manifest says which paths belong under version control, as globs
 rather than as a list, so a newly written hook or skill is reported the moment
@@ -41,18 +41,18 @@ field is committed as a template with a {{ secret "name" }} call where the value
 goes, so the file stays reviewable and the value never reaches git.
 
 Packages are declared per source - brew, cargo, bun, go, mise, krew, apt - plus
-the binaries that arrive by curl and belong to no package manager at all. dotx
+the binaries that arrive by curl and belong to no package manager at all. dots
 reports what is declared but missing and what is installed but undeclared.
 
 Storage stays the two bare repos over $HOME that the config and secret shell
-aliases already use, so adopting dotx does not invalidate them.`,
+aliases already use, so adopting dots does not invalidate them.`,
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 
 	pf := root.PersistentFlags()
-	pf.StringVarP(&flagManifest, "manifest", "m", "", "path to dotx.toml (default ~/.config/dotx/dotx.toml)")
+	pf.StringVarP(&flagManifest, "manifest", "m", "", "path to dots.toml (default ~/.config/dots/dots.toml)")
 	pf.BoolVar(&flagJSON, "json", false, "emit JSON instead of text")
 
 	root.AddCommand(
@@ -75,7 +75,7 @@ func load() (*manifest.Manifest, error) {
 	m, err := manifest.Load(flagManifest)
 	if err != nil {
 		if os.IsNotExist(err) || os.IsNotExist(unwrap(err)) {
-			return nil, fmt.Errorf("no manifest at %s - run `dotx init` to create one",
+			return nil, fmt.Errorf("no manifest at %s - run `dots init` to create one",
 				manifest.DefaultPath())
 		}
 		return nil, err

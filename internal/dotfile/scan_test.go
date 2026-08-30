@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/keyolk/dotx/internal/manifest"
+	"github.com/keyolk/dots/internal/manifest"
 )
 
 // fixture builds a self-contained work tree with a real bare repo over it, so
@@ -36,7 +36,7 @@ func newFixture(t *testing.T, groups ...manifest.Group) *fixture {
 	// Identity must be set explicitly: a machine whose global git config lacks
 	// user.email cannot commit, and the test would fail for an unrelated reason.
 	run(t, work, "git", "--git-dir="+gitDir, "--work-tree="+work, "config", "user.email", "test@example.com")
-	run(t, work, "git", "--git-dir="+gitDir, "--work-tree="+work, "config", "user.name", "dotx test")
+	run(t, work, "git", "--git-dir="+gitDir, "--work-tree="+work, "config", "user.name", "dots test")
 
 	return &fixture{
 		t:        t,
@@ -350,7 +350,7 @@ func TestNoisyDirectoriesArePruned(t *testing.T) {
 
 // TestSubmoduleIsNotReportedAsUndeclared guards a path to real data loss: a
 // gitlink is a commit pointer, so no file glob can ever match it, and treating
-// it as undeclared would make `dotx prune` detach vim-plug, tpm and fisherman
+// it as undeclared would make `dots prune` detach vim-plug, tpm and fisherman
 // from the store.
 func TestSubmoduleIsNotReportedAsUndeclared(t *testing.T) {
 	f := newFixture(t, manifest.Group{Name: "shell", Include: []string{".bashrc"}})

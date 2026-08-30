@@ -9,11 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/dotfile"
-	"github.com/keyolk/dotx/internal/git"
-	"github.com/keyolk/dotx/internal/manifest"
-	"github.com/keyolk/dotx/internal/pkgmgr"
-	"github.com/keyolk/dotx/internal/secret"
+	"github.com/keyolk/dots/internal/dotfile"
+	"github.com/keyolk/dots/internal/git"
+	"github.com/keyolk/dots/internal/manifest"
+	"github.com/keyolk/dots/internal/pkgmgr"
+	"github.com/keyolk/dots/internal/secret"
 )
 
 // check is one diagnostic with a fix the user can act on.
@@ -39,7 +39,7 @@ sources are consistent, and what to run for each thing that is not.`,
 					name:   "manifest",
 					status: "fail",
 					detail: err.Error(),
-					fix:    "dotx init",
+					fix:    "dots init",
 				}})
 				return fmt.Errorf("no usable manifest")
 			}
@@ -80,7 +80,7 @@ func checkStores(m *manifest.Manifest) []check {
 		r := git.New(s.dir, m.Store.WorkTree)
 		if !r.Exists() {
 			out = append(out, check{s.name, "fail", s.dir + " does not exist",
-				"dotx init --clone <url>"})
+				"dots init --clone <url>"})
 			continue
 		}
 		files, err := r.LsFiles()
@@ -95,11 +95,11 @@ func checkStores(m *manifest.Manifest) []check {
 
 func checkVault(m *manifest.Manifest) check {
 	if m.Secrets.Identity == "" {
-		return check{"vault", "warn", "no age identity configured", "dotx secret keygen"}
+		return check{"vault", "warn", "no age identity configured", "dots secret keygen"}
 	}
 	if _, err := os.Stat(m.Secrets.Identity); err != nil {
 		return check{"vault", "fail", "identity missing: " + m.Secrets.Identity,
-			"dotx secret keygen, or restore the key from your password manager"}
+			"dots secret keygen, or restore the key from your password manager"}
 	}
 	// A world-readable private key is a real finding, not a style note.
 	if fi, err := os.Stat(m.Secrets.Identity); err == nil && fi.Mode().Perm()&0o077 != 0 {
@@ -131,7 +131,7 @@ func checkDotfiles(m *manifest.Manifest) check {
 		fmt.Sprintf("%d modified, %d untracked, %d missing, %d undeclared",
 			counts[dotfile.Modified], counts[dotfile.Untracked],
 			counts[dotfile.Missing], counts[dotfile.Undeclared]),
-		"dotx status, then dotx save"}
+		"dots status, then dots save"}
 }
 
 func checkPackages(m *manifest.Manifest) check {
@@ -148,11 +148,11 @@ func checkPackages(m *manifest.Manifest) check {
 	}
 	return check{"packages", "warn",
 		fmt.Sprintf("%d declared package(s) not installed", missing),
-		"dotx pkg sync"}
+		"dots pkg sync"}
 }
 
 // checkPath catches the failure that makes a fresh machine look broken in a way
-// that has nothing to do with dotx: everything installs correctly into
+// that has nothing to do with dots: everything installs correctly into
 // ~/.local/bin and none of it is on PATH.
 func checkPath() check {
 	home, _ := os.UserHomeDir()

@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/dotfile"
+	"github.com/keyolk/dots/internal/dotfile"
 )
 
 func newSaveCmd() *cobra.Command {
@@ -75,7 +75,7 @@ add applies.`,
 				return blockedErr(blocked)
 			}
 			if message == "" {
-				message = "dotx: sync"
+				message = "dots: sync"
 			}
 
 			for store, paths := range byStore {

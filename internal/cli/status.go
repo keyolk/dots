@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/dotfile"
+	"github.com/keyolk/dots/internal/dotfile"
 )
 
 func newStatusCmd() *cobra.Command {

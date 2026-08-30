@@ -30,7 +30,7 @@ func originRepo(t *testing.T, files map[string]string) string {
 	}
 	git("init", "-q", "-b", "main")
 	git("config", "user.email", "t@example.com")
-	git("config", "user.name", "dotx test")
+	git("config", "user.name", "dots test")
 
 	for rel, body := range files {
 		p := filepath.Join(dir, rel)

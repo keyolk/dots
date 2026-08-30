@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/keyolk/dotx/internal/secret"
+	"github.com/keyolk/dots/internal/secret"
 )
 
 func newSecretCmd() *cobra.Command {
@@ -71,7 +71,7 @@ func newSecretGetCmd() *cobra.Command {
 		Use:   "get <name>",
 		Short: "Print one secret to stdout",
 		Long: `get writes the raw value with no trailing newline, so it composes with
-command substitution: export TOKEN=$(dotx secret get anthropic/oauth)`,
+command substitution: export TOKEN=$(dots secret get anthropic/oauth)`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			v, err := openVault()

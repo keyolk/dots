@@ -169,7 +169,7 @@ func TestTargetStripsSuffix(t *testing.T) {
 
 func TestDefaultFillsEmptyValue(t *testing.T) {
 	r := New(nil, "h")
-	out, err := r.Render("x", []byte(`{{ env "DOTX_UNSET_IN_TEST" | default "fallback" }}`))
+	out, err := r.Render("x", []byte(`{{ env "DOTS_UNSET_IN_TEST" | default "fallback" }}`))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -274,8 +274,8 @@ func TestRenderFileOverwritesAnExistingTarget(t *testing.T) {
 }
 
 func TestEnvReadsASetVariable(t *testing.T) {
-	t.Setenv("DOTX_TEST_VAR", "from-env")
-	out, err := New(nil, "h").Render("x", []byte(`{{ env "DOTX_TEST_VAR" }}`))
+	t.Setenv("DOTS_TEST_VAR", "from-env")
+	out, err := New(nil, "h").Render("x", []byte(`{{ env "DOTS_TEST_VAR" }}`))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}

@@ -1,8 +1,8 @@
-// Package manifest reads dotx.toml, the declarative description of what a
+// Package manifest reads dots.toml, the declarative description of what a
 // machine should look like: which paths are dotfiles, which of them carry
 // secrets, and which packages should be installed from which source.
 //
-// The manifest is the only place that knows intent. Everything else in dotx
+// The manifest is the only place that knows intent. Everything else in dots
 // compares intent against what is actually on disk.
 package manifest
 
@@ -16,7 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Manifest is the parsed dotx.toml.
+// Manifest is the parsed dots.toml.
 type Manifest struct {
 	// Path the manifest was read from, for error messages and for resolving
 	// relative store paths.
@@ -28,10 +28,10 @@ type Manifest struct {
 	Packages map[string]*PkgList `toml:"packages"`
 }
 
-// Store locates the git repositories that hold tracked content. dotx keeps the
+// Store locates the git repositories that hold tracked content. dots keeps the
 // existing bare-repo-over-$HOME layout rather than inventing a source tree:
 // migrating 2000 tracked paths into a new directory is a cost with no payoff,
-// and `config`/`secret` keep working while dotx is adopted.
+// and `config`/`secret` keep working while dots is adopted.
 type Store struct {
 	// Config is the bare repo holding non-secret dotfiles.
 	Config string `toml:"config"`
@@ -84,7 +84,7 @@ type Group struct {
 // PkgList is the declared package set for one source (brew, cargo, ...).
 type PkgList struct {
 	// Install is the command template used to install one package. %s is the
-	// package name. Empty means the source is known to dotx natively.
+	// package name. Empty means the source is known to dots natively.
 	Install string `toml:"install"`
 	// List is the command that prints installed package names, one per line.
 	List string `toml:"list"`
@@ -118,15 +118,15 @@ type Binary struct {
 	OS []string `toml:"os"`
 }
 
-// DefaultPath is where dotx looks for its manifest when none is given.
+// DefaultPath is where dots looks for its manifest when none is given.
 func DefaultPath() string {
-	if p := os.Getenv("DOTX_MANIFEST"); p != "" {
+	if p := os.Getenv("DOTS_MANIFEST"); p != "" {
 		return p
 	}
 	if h, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(h, ".config", "dotx", "dotx.toml")
+		return filepath.Join(h, ".config", "dots", "dots.toml")
 	}
-	return "dotx.toml"
+	return "dots.toml"
 }
 
 // Load reads and validates a manifest, expanding ~ in path fields.

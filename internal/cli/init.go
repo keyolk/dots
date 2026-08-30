@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/git"
-	"github.com/keyolk/dotx/internal/manifest"
-	"github.com/keyolk/dotx/internal/secret"
+	"github.com/keyolk/dots/internal/git"
+	"github.com/keyolk/dots/internal/manifest"
+	"github.com/keyolk/dots/internal/secret"
 )
 
 func newInitCmd() *cobra.Command {
@@ -22,7 +22,7 @@ func newInitCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Set up dotx on this machine",
+		Short: "Set up dots on this machine",
 		Long: `init prepares a machine, whether it already has dotfiles or nothing at all.
 
 On a machine that already has the config and secret bare repos, it writes a
@@ -88,7 +88,7 @@ somewhere it should not be.`,
 				}
 			}
 
-			identity := filepath.Join(home, ".config", "dotx", "identity.age")
+			identity := filepath.Join(home, ".config", "dots", "identity.age")
 			var pub string
 			if _, err := os.Stat(identity); os.IsNotExist(err) {
 				pub, err = secret.GenerateIdentity(identity)
@@ -110,9 +110,9 @@ somewhere it should not be.`,
 				fmt.Printf("age identity: %s\npublic key:   %s\n", identity, pub)
 			}
 			fmt.Println("\nnext:")
-			fmt.Println("  dotx doctor            # see what is inconsistent")
-			fmt.Println("  dotx status            # see what is untracked")
-			fmt.Println("  dotx pkg adopt brew    # capture what is installed")
+			fmt.Println("  dots doctor            # see what is inconsistent")
+			fmt.Println("  dots status            # see what is untracked")
+			fmt.Println("  dots pkg adopt brew    # capture what is installed")
 			if !which("age") && !which("git") {
 				fmt.Println("\nwarning: git is not on PATH; install it before using the stores")
 			}
@@ -142,14 +142,14 @@ func redactURL(raw string) string {
 
 // starterManifest emits a manifest that reflects this machine rather than a
 // generic example: the groups below are the ones that were measurably
-// mistracked here, so a first `dotx status` reports something true.
+// mistracked here, so a first `dots status` reports something true.
 func starterManifest(configDir, secretDir, home, identity, pub string) string {
 	recipients := ""
 	if pub != "" {
 		recipients = fmt.Sprintf("%q", pub)
 	}
 
-	return fmt.Sprintf(`# dotx manifest
+	return fmt.Sprintf(`# dots manifest
 #
 # Groups declare which paths belong under version control, as globs. A file
 # matching a group is reported the moment it appears, which is the difference
@@ -164,7 +164,7 @@ work_tree = %q
 [secrets]
 identity   = %q
 recipients = [%s]
-vault      = ".config/dotx/vault.age"
+vault      = ".config/dots/vault.age"
 
 # --- dotfiles -------------------------------------------------------------
 
@@ -247,12 +247,12 @@ exclude = [
   # Vendored shims a third-party installer drops in, not this machine's work.
   ".local/bin/* (kiro-cli-term)",
   ".local/bin/* (qterm)",
-  # Compiled binaries belong to the packages section, not here. dotx detects
+  # Compiled binaries belong to the packages section, not here. dots detects
   # them by magic number and reports them as artifacts, so this list only
   # needs the ones already committed before that check existed -- 30 binaries
   # totalling 509MB, one of which (telepresence, 127MB) exceeded GitHub's hard
   # file-size limit and made the store unpushable.
-  ".local/bin/{argx,ccx,ccx-test,cco,dpx,ghx,gcl,kmd,okx,tpx,dotx}",
+  ".local/bin/{argx,ccx,ccx-test,cco,dpx,ghx,gcl,kmd,okx,tpx,dots}",
   ".local/bin/{telepresence,tempo-cli,kubectl-trace,esoctl,vmctl,netpulse}",
   ".local/bin/{herdr,r53-record-collector,narwhal,narwhal-bin,agent-cast}",
   ".local/bin/{ccproxy,k7s,tweb,tweb-tauri,tweb-pane,twebd,cs,netscope}",
@@ -267,12 +267,12 @@ exclude = [".config/pass-git-helper/*.bak.*"]
 
 # Tool configs that live outside the groups above. Each is hand-written config
 # that no package manager or generator produces.
-# dotx's own manifest. A machine cannot reproduce itself from a manifest the
+# dots's own manifest. A machine cannot reproduce itself from a manifest the
 # store does not carry.
 # The manifest is ordinary config -- it names paths, not values.
 [[dotfiles]]
-name    = "dotx"
-include = [".config/dotx/dotx.toml"]
+name    = "dots"
+include = [".config/dots/dots.toml"]
 
 # The vault is ciphertext, so committing it is safe, and only a machine listed
 # in secrets.recipients can open it. Without it in a store, a new machine has a
@@ -281,9 +281,9 @@ include = [".config/dotx/dotx.toml"]
 # identity.age -- the private key -- is deliberately in no group at all. It
 # moves by hand, or the store becomes a single point of compromise.
 [[dotfiles]]
-name    = "dotx-vault"
+name    = "dots-vault"
 secret  = true
-include = [".config/dotx/vault.age"]
+include = [".config/dots/vault.age"]
 
 [[dotfiles]]
 name    = "tools"
@@ -391,7 +391,7 @@ include = [".xprofile", ".config/kime/**/*"]
 # --- packages -------------------------------------------------------------
 #
 # Populate these from what is already installed:
-#   dotx pkg adopt brew cask cargo bun mise krew
+#   dots pkg adopt brew cask cargo bun mise krew
 
 [packages.brew]
 packages = []

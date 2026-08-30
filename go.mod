@@ -1,4 +1,4 @@
-module github.com/keyolk/dotx
+module github.com/keyolk/dots
 
 go 1.25.1
 

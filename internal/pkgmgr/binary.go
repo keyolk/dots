@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/keyolk/dotx/internal/manifest"
+	"github.com/keyolk/dots/internal/manifest"
 )
 
 // goBinaries enumerates ~/go/bin, since `go install` keeps no manifest of what

@@ -1,20 +1,20 @@
-# dotx
+# dots
 
 Declarative dotfile, secret and package management for a machine you actually
 use.
 
 ```
-dotx status                      # what differs from the manifest
-dotx add                         # commit declared files the store never saw
-dotx save -M "message"           # stage and commit everything declared
-dotx prune                       # untrack what the manifest no longer declares
-dotx apply                       # render templates, substituting secrets
-dotx secret set <name>           # store a secret in the age vault
-dotx pkg diff                    # declared vs installed, per source
-dotx pkg sync                    # install what is declared and missing
-dotx pkg bin                     # account for curl-installed binaries
-dotx doctor                      # what is inconsistent, and what to run
-dotx init                        # set up a machine, fresh or existing
+dots status                      # what differs from the manifest
+dots add                         # commit declared files the store never saw
+dots save -M "message"           # stage and commit everything declared
+dots prune                       # untrack what the manifest no longer declares
+dots apply                       # render templates, substituting secrets
+dots secret set <name>           # store a secret in the age vault
+dots pkg diff                    # declared vs installed, per source
+dots pkg sync                    # install what is declared and missing
+dots pkg bin                     # account for curl-installed binaries
+dots doctor                      # what is inconsistent, and what to run
+dots init                        # set up a machine, fresh or existing
 ```
 
 ## Why
@@ -52,7 +52,7 @@ Three more problems come from the same root:
 
 ## The manifest
 
-One `dotx.toml` declares intent. Everything else compares intent against
+One `dots.toml` declares intent. Everything else compares intent against
 reality.
 
 ```toml
@@ -62,9 +62,9 @@ secret    = "~/.secret.repo"
 work_tree = "~"
 
 [secrets]
-identity   = "~/.config/dotx/identity.age"
+identity   = "~/.config/dots/identity.age"
 recipients = ["age1qmsxc455ljqp0..."]
-vault      = ".config/dotx/vault.age"
+vault      = ".config/dots/vault.age"
 
 [[dotfiles]]
 name    = "claude"
@@ -73,7 +73,7 @@ exclude = [".claude/**/__pycache__/**", ".claude/**/.archive-*/**"]
 ```
 
 Paths are declared as **globs, not as a list**. A hook written tomorrow matches
-`.claude/hooks/**/*.py` and shows up in `dotx status` immediately. That is the
+`.claude/hooks/**/*.py` and shows up in `dots status` immediately. That is the
 whole difference from `git add`.
 
 Groups carry conditions and roles:
@@ -130,11 +130,11 @@ exactly what a `.password-store` tree does today, listing every account you hold
 in the clear.
 
 ```
-dotx secret keygen                       # generate this machine's identity
-dotx secret set github/token             # prompts, no echo
-dotx secret set tls/key --stdin < key.pem
-dotx secret get github/token             # raw value, composes with $(...)
-dotx secret list                         # names only, never values in bulk
+dots secret keygen                       # generate this machine's identity
+dots secret set github/token             # prompts, no echo
+dots secret set tls/key --stdin < key.pem
+dots secret get github/token             # raw value, composes with $(...)
+dots secret list                         # names only, never values in bulk
 ```
 
 ### Why this does not replace `pass`
@@ -144,7 +144,7 @@ The two coexist deliberately, because they answer different questions.
 | | holds | read by |
 |---|---|---|
 | `pass` (GPG) | interactive secrets — what a shell function pulls with `$(pass ...)` | you, at a prompt |
-| dotx vault (age) | values that get rendered into config files | `dotx apply` |
+| dots vault (age) | values that get rendered into config files | `dots apply` |
 
 Using age here does not mean `pass` should move to age too, because `pass`
 cannot: it hardcodes `GPG="gpg"` (falling back to `gpg2`) and calls `$GPG -e` /
@@ -156,7 +156,7 @@ support it.
 Meanwhile `pass` is load-bearing here in ways a swap would break: 33 call sites
 in `config.fish`, and `.gitconfig` wires `pass-git-helper` as the git credential
 helper that dispatches a different GitHub token per org. Switching would take
-out `git push` to buy nothing dotx needs.
+out `git push` to buy nothing dots needs.
 
 The GPG key already lives in the secret store, so a new machine already has a
 path to restore it. Moving two keys instead of one is not the cost worth
@@ -173,9 +173,9 @@ somewhere it should not be.
 no manifest group claims. Files are only untracked, never deleted.
 
 ```
-dotx prune -n                    # list what would be untracked
-dotx prune --store secret        # one store at a time
-dotx prune -y --commit           # do it
+dots prune -n                    # list what would be untracked
+dots prune --store secret        # one store at a time
+dots prune -y --commit           # do it
 ```
 
 The two stores are pruned separately by design. A config store accumulates
@@ -211,7 +211,7 @@ The answer to "this config file has one secret field in it".
 { "token": "{{ secret "anthropic/ccproxy-oauth" }}", "weight": 30 }
 ```
 
-`dotx apply` renders `.ccproxy/config.json` with the real value, at mode `0600`,
+`dots apply` renders `.ccproxy/config.json` with the real value, at mode `0600`,
 and never tracks it. A missing secret is a hard error — rendering an empty token
 produces a config that fails much later with an unrelated-looking auth error.
 
@@ -221,7 +221,7 @@ Available in templates: `{{ secret "name" }}`, `{{ env "VAR" }}`,
 
 ## The credential guard
 
-`dotx add` and `dotx save` refuse any file bound for the **config** store that
+`dots add` and `dots save` refuse any file bound for the **config** store that
 matches a credential shape — Anthropic, OpenAI, GitHub, AWS, Slack, Doppler
 tokens and PEM private keys. The report names the file and line and prints only
 a 12-character prefix: a guard that leaks the secret while refusing it has
@@ -271,11 +271,11 @@ arrived from a `curl | sh` and is otherwise indistinguishable from one you
 compiled. Declaring it records how to reproduce it.
 
 ```
-dotx pkg diff              # per source: managed, missing, undeclared
-dotx pkg diff --extra      # name the undeclared ones
-dotx pkg adopt brew        # emit TOML for what is installed but undeclared
-dotx pkg sync -n           # print install commands without running them
-dotx pkg bin               # declared binaries + undeclared ones in ~/.local/bin
+dots pkg diff              # per source: managed, missing, undeclared
+dots pkg diff --extra      # name the undeclared ones
+dots pkg adopt brew        # emit TOML for what is installed but undeclared
+dots pkg sync -n           # print install commands without running them
+dots pkg bin               # declared binaries + undeclared ones in ~/.local/bin
 ```
 
 `sync` **never removes anything.** An installed-but-undeclared package is
@@ -290,31 +290,31 @@ missing" — otherwise `sync` would act on a lie and reinstall the world.
 On a machine that has nothing:
 
 ```
-# 1. git and dotx must exist first; everything else comes from the stores.
-dotx init --clone-config https://github.com/you/config.git \
+# 1. git and dots must exist first; everything else comes from the stores.
+dots init --clone-config https://github.com/you/config.git \
           --clone-secret https://github.com/you/secret.git
 
 # 2. init prints this machine's new age public key. From a machine that can
 #    already decrypt, append it to secrets.recipients and re-save the vault:
-#      dotx secret set <any-existing-key> "$(dotx secret get <any-existing-key>)"
+#      dots secret set <any-existing-key> "$(dots secret get <any-existing-key>)"
 #    then push. Until that happens, step 4 fails by design.
 
-dotx doctor          # what is inconsistent
-dotx pkg sync        # install the declared packages
-dotx apply           # render templates once the vault is readable
+dots doctor          # what is inconsistent
+dots pkg sync        # install the declared packages
+dots apply           # render templates once the vault is readable
 ```
 
 What each store carries, and what it deliberately does not:
 
 | | in a store | why |
 |---|---|---|
-| `dotx.toml` | config | names paths, not values |
+| `dots.toml` | config | names paths, not values |
 | `vault.age` | secret | ciphertext; useless without a listed key |
 | `identity.age` | **neither** | the private key; moving it by hand is the point |
 | `.ccproxy/config.json` | **neither** | rendered output, holds the live token |
 | `.local/bin/*` compiled | **neither** | rebuild from source, don't commit Mach-O |
 
-### Two things a fresh machine needs before dotx can help
+### Two things a fresh machine needs before dots can help
 
 Both were found by running the bootstrap into an empty `$HOME` rather than by
 reasoning about it.
@@ -328,7 +328,7 @@ clone URL for the first fetch:
 
 ```
 TOKEN=<a personal access token>
-dotx init --clone-config "https://user:$TOKEN@github.com/you/config.git" \
+dots init --clone-config "https://user:$TOKEN@github.com/you/config.git" \
           --clone-secret "https://user:$TOKEN@github.com/you/secret.git"
 git --git-dir=~/.config.repo --work-tree=$HOME remote set-url origin \
     https://github.com/you/config.git      # drop the token afterwards
@@ -359,25 +359,25 @@ a machine that can already read the vault, then `apply` works.
 Checkout refuses to overwrite existing files and names every conflict, rather
 than clobbering a home directory that already had content.
 
-On a machine that already has the bare repos, plain `dotx init` writes a
+On a machine that already has the bare repos, plain `dots init` writes a
 manifest describing what is there and changes nothing else.
 
 ## Adopting it
 
 The two bare repos stay exactly as they are — same history, same remotes, and
-the `config` and `secret` shell aliases keep working. dotx layers on top rather
+the `config` and `secret` shell aliases keep working. dots layers on top rather
 than migrating anything, so nothing has to be moved to try it.
 
 ```
-dotx init
-dotx status --group-by group    # see what was never tracked
-dotx pkg adopt brew cargo bun   # capture what is installed
+dots init
+dots status --group-by group    # see what was never tracked
+dots pkg adopt brew cargo bun   # capture what is installed
 ```
 
 ## Build
 
 ```
 make build
-make install       # to ~/.local/bin/dotx
+make install       # to ~/.local/bin/dots
 make test
 ```

@@ -1,5 +1,5 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BIN := bin/dotx
+BIN := bin/dots
 
 .PHONY: build run install clean tidy test vet
 
@@ -10,8 +10,8 @@ run: build
 	$(BIN)
 
 install: build
-	rm -f ~/.local/bin/dotx
-	cp $(BIN) ~/.local/bin/dotx
+	rm -f ~/.local/bin/dots
+	cp $(BIN) ~/.local/bin/dots
 
 clean:
 	rm -rf bin/

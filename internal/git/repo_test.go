@@ -36,7 +36,7 @@ func newRepo(t *testing.T) *Repo {
 	if _, err := r.Run("config", "user.email", "test@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.Run("config", "user.name", "dotx test"); err != nil {
+	if _, err := r.Run("config", "user.name", "dots test"); err != nil {
 		t.Fatal(err)
 	}
 	return r
@@ -106,7 +106,7 @@ func TestAddThenLsFilesReportsThePath(t *testing.T) {
 }
 
 func TestAddWithNoPathsIsANoOp(t *testing.T) {
-	// `dotx add` with nothing to stage must not invoke `git add --`, which
+	// `dots add` with nothing to stage must not invoke `git add --`, which
 	// would fail rather than doing nothing.
 	if err := newRepo(t).Add(); err != nil {
 		t.Fatalf("Add() with no paths: %v", err)
@@ -128,7 +128,7 @@ func TestCommitReportsWhetherAnythingWasRecorded(t *testing.T) {
 		t.Fatal("Commit reported nothing recorded despite a staged file")
 	}
 
-	// An empty commit is a no-op, not a failure: `dotx save` runs across both
+	// An empty commit is a no-op, not a failure: `dots save` runs across both
 	// stores and only one of them may have changes.
 	ok, err = r.Commit("second")
 	if err != nil {
@@ -203,7 +203,7 @@ func TestModifiedIsEmptyForACleanTree(t *testing.T) {
 
 // TestModifiedBeforeFirstCommitDoesNotFail covers a freshly initialised store:
 // there is no HEAD to diff against, and treating that as an error would break
-// the very first `dotx status` on a new machine.
+// the very first `dots status` on a new machine.
 func TestModifiedBeforeFirstCommitDoesNotFail(t *testing.T) {
 	r := newRepo(t)
 	write(t, r, ".bashrc", "x\n")

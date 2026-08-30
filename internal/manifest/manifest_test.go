@@ -9,7 +9,7 @@ import (
 
 func writeManifest(t *testing.T, body string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "dotx.toml")
+	p := filepath.Join(t.TempDir(), "dots.toml")
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestLoadExpandsTilde(t *testing.T) {
 [store]
 config = "~/.config.repo"
 [secrets]
-identity = "~/.config/dotx/identity.age"
+identity = "~/.config/dots/identity.age"
 `)
 	m, err := Load(p)
 	if err != nil {
@@ -33,7 +33,7 @@ identity = "~/.config/dotx/identity.age"
 	if m.Store.Config != filepath.Join(home, ".config.repo") {
 		t.Fatalf("Store.Config = %q, want the expanded path", m.Store.Config)
 	}
-	if m.Secrets.Identity != filepath.Join(home, ".config", "dotx", "identity.age") {
+	if m.Secrets.Identity != filepath.Join(home, ".config", "dots", "identity.age") {
 		t.Fatalf("Secrets.Identity = %q, want the expanded path", m.Secrets.Identity)
 	}
 }
@@ -150,16 +150,16 @@ func TestResolvedPicksOnlyThisOSList(t *testing.T) {
 func TestDefaultPathHonoursEnvOverride(t *testing.T) {
 	// The override is how a test or a second profile points at another
 	// manifest without touching the real one.
-	t.Setenv("DOTX_MANIFEST", "/custom/dotx.toml")
-	if got := DefaultPath(); got != "/custom/dotx.toml" {
+	t.Setenv("DOTS_MANIFEST", "/custom/dots.toml")
+	if got := DefaultPath(); got != "/custom/dots.toml" {
 		t.Fatalf("DefaultPath = %q", got)
 	}
 }
 
 func TestDefaultPathFallsBackToXDGStyleLocation(t *testing.T) {
-	t.Setenv("DOTX_MANIFEST", "")
+	t.Setenv("DOTS_MANIFEST", "")
 	home, _ := os.UserHomeDir()
-	want := filepath.Join(home, ".config", "dotx", "dotx.toml")
+	want := filepath.Join(home, ".config", "dots", "dots.toml")
 	if got := DefaultPath(); got != want {
 		t.Fatalf("DefaultPath = %q, want %q", got, want)
 	}
@@ -222,7 +222,7 @@ include  = [".config/**/*.tmpl"]
 
 func TestLoadWithAnEmptyPathUsesTheDefault(t *testing.T) {
 	// Passing "" is how the CLI says "no --manifest flag given".
-	t.Setenv("DOTX_MANIFEST", filepath.Join(t.TempDir(), "absent.toml"))
+	t.Setenv("DOTS_MANIFEST", filepath.Join(t.TempDir(), "absent.toml"))
 	if _, err := Load(""); err == nil {
 		t.Fatal("Load(\"\") did not consult the default path")
 	}

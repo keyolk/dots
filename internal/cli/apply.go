@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/dotfile"
-	"github.com/keyolk/dotx/internal/manifest"
-	"github.com/keyolk/dotx/internal/secret"
-	"github.com/keyolk/dotx/internal/tmpl"
+	"github.com/keyolk/dots/internal/dotfile"
+	"github.com/keyolk/dots/internal/manifest"
+	"github.com/keyolk/dots/internal/secret"
+	"github.com/keyolk/dots/internal/tmpl"
 )
 
 func newApplyCmd() *cobra.Command {
@@ -107,7 +107,7 @@ func newRenderer(m *manifest.Manifest) (*tmpl.Renderer, error) {
 func vaultPath(m *manifest.Manifest) string {
 	p := m.Secrets.Vault
 	if p == "" {
-		p = ".config/dotx/vault.age"
+		p = ".config/dots/vault.age"
 	}
 	if filepath.IsAbs(p) {
 		return p

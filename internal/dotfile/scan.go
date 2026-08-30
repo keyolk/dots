@@ -20,9 +20,9 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	"github.com/keyolk/dotx/internal/git"
-	"github.com/keyolk/dotx/internal/manifest"
-	"github.com/keyolk/dotx/internal/tmpl"
+	"github.com/keyolk/dots/internal/git"
+	"github.com/keyolk/dots/internal/manifest"
+	"github.com/keyolk/dots/internal/tmpl"
 )
 
 // State is where one path stands relative to the manifest and the store.

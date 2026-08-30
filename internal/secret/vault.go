@@ -1,4 +1,4 @@
-// Package secret implements dotx's secret backend: an age-encrypted key-value
+// Package secret implements dots's secret backend: an age-encrypted key-value
 // vault plus the identity that opens it.
 //
 // The vault is a single encrypted file rather than one file per secret. A
@@ -35,7 +35,7 @@ type Vault struct {
 }
 
 // Open decrypts the vault at path. A missing file is not an error: it yields an
-// empty vault, so `dotx secret set` works on a machine that has never had one.
+// empty vault, so `dots secret set` works on a machine that has never had one.
 func Open(path, identityFile string, recipientStrings []string) (*Vault, error) {
 	ids, err := loadIdentities(identityFile)
 	if err != nil {
@@ -127,7 +127,7 @@ func (v *Vault) Keys() []string {
 // Save re-encrypts the vault to all recipients and writes it atomically.
 func (v *Vault) Save() error {
 	var plain bytes.Buffer
-	plain.WriteString("# dotx vault - age encrypted, do not edit directly\n")
+	plain.WriteString("# dots vault - age encrypted, do not edit directly\n")
 	for _, k := range v.Keys() {
 		fmt.Fprintf(&plain, "%s = %s\n", k, escape(v.values[k]))
 	}
@@ -243,7 +243,7 @@ func GenerateIdentity(path string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", err
 	}
-	body := fmt.Sprintf("# created by dotx\n# public key: %s\n%s\n",
+	body := fmt.Sprintf("# created by dots\n# public key: %s\n%s\n",
 		id.Recipient(), id)
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		return "", err

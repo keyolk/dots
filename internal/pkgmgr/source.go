@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/keyolk/dotx/internal/manifest"
+	"github.com/keyolk/dots/internal/manifest"
 )
 
 // Source enumerates and installs packages for one package manager.
@@ -48,7 +48,7 @@ type Diff struct {
 	Managed int
 }
 
-// builtins are the sources dotx knows how to drive without configuration.
+// builtins are the sources dots knows how to drive without configuration.
 // A manifest can still override any of them, but a fresh machine gets working
 // behaviour with an empty [packages.brew] table.
 var builtins = map[string]Source{
@@ -69,7 +69,7 @@ var builtins = map[string]Source{
 	},
 	"go": {
 		Name: "go", Probe: "go",
-		// `go install` has no list command; dotx reads ~/go/bin instead, which
+		// `go install` has no list command; dots reads ~/go/bin instead, which
 		// the parser below special-cases.
 		installCmd: []string{"go", "install"},
 	},
@@ -219,7 +219,7 @@ func Reconcile(m *manifest.Manifest) []Diff {
 		if err != nil {
 			// A source that cannot be listed is reported as unavailable rather
 			// than as "everything is missing", which would be a lie that
-			// `dotx pkg sync` would then act on.
+			// `dots pkg sync` would then act on.
 			d.Available = false
 			out = append(out, d)
 			continue

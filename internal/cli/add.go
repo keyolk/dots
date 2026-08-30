@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/keyolk/dotx/internal/dotfile"
+	"github.com/keyolk/dots/internal/dotfile"
 )
 
 // secretPatterns are the shapes that must never reach the config repo. They are
@@ -146,7 +146,7 @@ group in the manifest.`,
 				if !force {
 					continue
 				}
-				ok, err := repo.Commit(fmt.Sprintf("dotx: add %d file(s)", len(paths)))
+				ok, err := repo.Commit(fmt.Sprintf("dots: add %d file(s)", len(paths)))
 				if err != nil {
 					return err
 				}
@@ -159,7 +159,7 @@ group in the manifest.`,
 				fmt.Fprintf(os.Stderr, "\n%d file(s) refused for credential content\n", blocked)
 			}
 			if !force {
-				fmt.Println("\nstaged only - run `dotx save` to commit")
+				fmt.Println("\nstaged only - run `dots save` to commit")
 			}
 			return nil
 		},
