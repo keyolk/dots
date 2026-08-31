@@ -333,11 +333,19 @@ exclude  = [
 
 # Material that is secret in whole. Exempt from the credential scan on
 # add/save, since holding credentials is what these paths are for.
+# ~/.kube/config gets its own group for the normalize setting: its 211 entries
+# come back in a fresh order whenever a context is switched, so without it a
+# one-line change reads as a 1951-line diff.
+[[dotfiles]]
+name      = "kubeconfig"
+secret    = true
+normalize = "kubeconfig"
+include   = [".kube/config"]
+
 [[dotfiles]]
 name    = "credentials"
 secret  = true
 include = [
-  ".kube/config",
   ".config/hub",
   ".aws/credentials",
   ".aws/amazonq/mcp.json",
@@ -406,12 +414,105 @@ packages = []
 [packages.apt]
 packages = []
 
-# Binaries no package manager owns. Each records how to reinstall it.
+# --- binaries no package manager can account for -------------------------
 #
-# [[packages.brew.binaries]]
-# name    = "coder"
-# from    = "https://github.com/coder/coder"
-# install = "curl -fsSL https://coder.com/install.sh | sh"
-# version = "%%s --version"
+# dots pkg bin checks these exist and reports how to rebuild the ones that
+# do not. Everything here is either built from a checkout under ~/src/keyolk
+# or installed by a vendor script; a package manager knows about none of it.
+
+[[packages.brew.binaries]]
+name    = "argx"
+from    = "~/src/keyolk/argx"
+install = "make -C ~/src/keyolk/argx install"
+
+[[packages.brew.binaries]]
+name    = "browserctl"
+from    = "~/src/keyolk/browserctl"
+install = "make -C ~/src/keyolk/browserctl install"
+
+[[packages.brew.binaries]]
+name    = "ccx"
+from    = "~/src/keyolk/ccx"
+install = "make -C ~/src/keyolk/ccx install"
+
+[[packages.brew.binaries]]
+name    = "dots"
+from    = "~/src/keyolk/dots"
+install = "make -C ~/src/keyolk/dots install"
+
+[[packages.brew.binaries]]
+name    = "dpx"
+from    = "~/src/keyolk/dpx"
+install = "make -C ~/src/keyolk/dpx install"
+
+[[packages.brew.binaries]]
+name    = "gcl"
+from    = "~/src/keyolk/gcl"
+install = "make -C ~/src/keyolk/gcl install"
+
+[[packages.brew.binaries]]
+name    = "ghx"
+from    = "~/src/keyolk/ghx"
+install = "make -C ~/src/keyolk/ghx install"
+
+[[packages.brew.binaries]]
+name    = "kmd"
+from    = "~/src/keyolk/kmd"
+install = "make -C ~/src/keyolk/kmd install"
+
+[[packages.brew.binaries]]
+name    = "narwhal"
+from    = "~/src/keyolk/narwhal"
+install = "make -C ~/src/keyolk/narwhal install"
+
+[[packages.brew.binaries]]
+name    = "netpulse"
+from    = "~/src/keyolk/netpulse"
+install = "make -C ~/src/keyolk/netpulse install"
+
+[[packages.brew.binaries]]
+name    = "okx"
+from    = "~/src/keyolk/okx"
+install = "make -C ~/src/keyolk/okx install"
+
+[[packages.brew.binaries]]
+name    = "tmc"
+from    = "~/src/keyolk/tmc"
+install = "make -C ~/src/keyolk/tmc install"
+
+[[packages.brew.binaries]]
+name    = "tpx"
+from    = "~/src/keyolk/tpx"
+install = "make -C ~/src/keyolk/tpx install"
+
+[[packages.brew.binaries]]
+name    = "tweb"
+from    = "~/src/keyolk/tweb"
+install = "make -C ~/src/keyolk/tweb install"
+
+[[packages.brew.binaries]]
+name    = "twm"
+from    = "~/src/keyolk/twm"
+install = "make -C ~/src/keyolk/twm install"
+
+[[packages.brew.binaries]]
+name    = "warp"
+from    = "~/src/keyolk/warp"
+install = "make -C ~/src/keyolk/warp install"
+
+# Vendor installers. Recorded so a fresh machine can reproduce them; the
+# version command is what dots pkg bin reports.
+[[packages.brew.binaries]]
+name    = "telepresence"
+from    = "https://github.com/telepresenceio/telepresence"
+install = "brew install telepresenceio/telepresence/telepresence-oss"
+version = "%%s version 2>/dev/null | head -1"
+
+[[packages.brew.binaries]]
+name    = "vmctl"
+from    = "https://github.com/VictoriaMetrics/VictoriaMetrics"
+install = "brew install victoriametrics/tools/vmctl"
+version = "%%s --version"
+
 `, configDir, home, identity, recipients)
 }

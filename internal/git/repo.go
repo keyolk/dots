@@ -177,6 +177,20 @@ func (r *Repo) Ignored(paths []string) ([]string, error) {
 	return splitZ(stdout.String()), nil
 }
 
+// Show returns the bytes of an object, e.g. "HEAD:.kube/config". Used to
+// compare a working copy against what the store holds without writing the
+// stored version to disk.
+func (r *Repo) Show(spec string) ([]byte, error) {
+	if !r.Exists() {
+		return nil, fmt.Errorf("store does not exist")
+	}
+	out, err := r.Run("show", spec)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(out), nil
+}
+
 // Add stages paths.
 func (r *Repo) Add(paths ...string) error {
 	if len(paths) == 0 {

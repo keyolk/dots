@@ -10,6 +10,7 @@
 package dotfile
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/keyolk/dots/internal/git"
 	"github.com/keyolk/dots/internal/manifest"
+	"github.com/keyolk/dots/internal/normalize"
 	"github.com/keyolk/dots/internal/tmpl"
 )
 
@@ -139,6 +141,33 @@ func NewScanner(m *manifest.Manifest, host string) *Scanner {
 	}
 }
 
+// sameAfterNormalize reports whether the working copy and the stored copy are
+// equivalent once both are canonicalised. A file that cannot be read, fetched
+// or normalised is treated as genuinely modified: reporting a change that is
+// not there is recoverable, hiding one is not.
+func (s *Scanner) sameAfterNormalize(rel, kind string) bool {
+	if !normalize.Known(normalize.Kind(kind)) {
+		return false
+	}
+	live, err := os.ReadFile(filepath.Join(s.m.Store.WorkTree, rel))
+	if err != nil {
+		return false
+	}
+	stored, err := s.repo.Show("HEAD:" + rel)
+	if err != nil {
+		return false
+	}
+	a, err := normalize.Apply(normalize.Kind(kind), live)
+	if err != nil {
+		return false
+	}
+	b, err := normalize.Apply(normalize.Kind(kind), stored)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(a, b)
+}
+
 // isArtifact reports whether a declared path is a build product rather than
 // configuration.
 func (s *Scanner) isArtifact(rel string) bool {
@@ -231,6 +260,13 @@ func (s *Scanner) Scan() ([]Entry, error) {
 		case !isTracked:
 			e.State = Untracked
 		case modified[path]:
+			// A file the manifest asks to normalise may differ only in the
+			// ordering its owning tool happened to write. Comparing the
+			// normalised forms tells a real edit apart from that churn.
+			if d.normalize != "" && s.sameAfterNormalize(path, d.normalize) {
+				e.State = Clean
+				break
+			}
 			e.State = Modified
 		default:
 			e.State = Clean
@@ -264,10 +300,11 @@ func (s *Scanner) Scan() ([]Entry, error) {
 }
 
 type decl struct {
-	group    string
-	store    string
-	template bool
-	artifact bool
+	group     string
+	store     string
+	template  bool
+	artifact  bool
+	normalize string
 }
 
 // declared walks the work tree once per group and resolves its globs.
@@ -303,10 +340,11 @@ func (s *Scanner) declaredWithInactive() (map[string]decl, []manifest.Group, err
 				continue
 			}
 			out[p] = decl{
-				group:    g.Name,
-				store:    store,
-				template: tmpl.IsTemplate(p),
-				artifact: s.isArtifact(p),
+				group:     g.Name,
+				store:     store,
+				template:  tmpl.IsTemplate(p),
+				artifact:  s.isArtifact(p),
+				normalize: g.Normalize,
 			}
 		}
 	}

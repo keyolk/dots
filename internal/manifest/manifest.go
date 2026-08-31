@@ -85,6 +85,13 @@ type Group struct {
 	// for exactly the files that most need tracking.
 	Secret bool `toml:"secret"`
 
+	// Normalize names a canonicalisation to apply before comparing a file to
+	// what the store holds. Some files are owned by a tool that reorders them
+	// on every run -- ~/.kube/config's 211 entries come back in a fresh order
+	// whenever a context is switched -- so without this a one-line change
+	// shows up as a 1951-line diff. Currently: "kubeconfig".
+	Normalize string `toml:"normalize"`
+
 	// Template marks paths in this group as Go templates rendered on apply.
 	// This is how a config file with one secret field stays in the config repo:
 	// the file is committed as `.tmpl` with a {{ secret "..." }} call where the
