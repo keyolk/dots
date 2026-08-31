@@ -1059,3 +1059,40 @@ func TestRedactURLHidesAnEmbeddedToken(t *testing.T) {
 		t.Fatalf("redactURL mangled a path: %s", got)
 	}
 }
+
+// TestPkgBinRespectsManifestExcludes covers the other half of the same noise
+// problem: a path a group deliberately excludes -- a vendored shim, an editor
+// backup, a compiled binary listed under packages -- is a decision already
+// made, and re-reporting it asks the same question on every run.
+func TestPkgBinRespectsManifestExcludes(t *testing.T) {
+	// The group declares only .sh files, so "mystery" is genuinely unclaimed
+	// while the two excluded names are decisions already recorded.
+	e := newEnv(t, baseManifest+`
+[[dotfiles]]
+name    = "scripts"
+include = [".local/bin/*.sh"]
+exclude = [".local/bin/* (vendored)", ".local/bin/*.bak.*"]
+`)
+	dir := filepath.Join(e.work, ".local/bin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"sh (vendored)", "old.bak.20260101", "mystery"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out, err := e.run("pkg", "bin", "--dir", dir)
+	if err != nil {
+		t.Fatalf("pkg bin: %v\n%s", err, out)
+	}
+	for _, excluded := range []string{"(vendored)", ".bak."} {
+		if strings.Contains(out, excluded) {
+			t.Fatalf("an excluded path was reported:\n%s", out)
+		}
+	}
+	if !strings.Contains(out, "mystery") {
+		t.Fatalf("the genuinely undeclared file was not reported:\n%s", out)
+	}
+}

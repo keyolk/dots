@@ -268,3 +268,42 @@ func TestInstallCmdIsNilForAnUnknownSource(t *testing.T) {
 		t.Fatalf("InstallCmd = %v, want nil", got)
 	}
 }
+
+// TestUndeclaredBinariesSkipsTrackedFiles is the fix for a report that was
+// mostly noise: ~/.local/bin holds shell scripts that dotfile groups already
+// track, and listing them as binaries of unknown origin buried the real
+// findings. Measured before this: 74 of 120 reported names were tracked
+// scripts.
+func TestUndeclaredBinariesSkipsTrackedFiles(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"tracked-script.sh", "mystery"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tracked := map[string]bool{"tracked-script.sh": true}
+	got, err := UndeclaredBinaries(&manifest.Manifest{}, dir, tracked)
+	if err != nil {
+		t.Fatalf("UndeclaredBinaries: %v", err)
+	}
+	if len(got) != 1 || got[0] != "mystery" {
+		t.Fatalf("UndeclaredBinaries = %v, want only the untracked file", got)
+	}
+}
+
+func TestUndeclaredBinariesWithNilTrackedSetStillWorks(t *testing.T) {
+	// A caller that cannot scan (a broken store, say) passes nil rather than
+	// failing; the report is then noisier but not wrong.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "thing"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := UndeclaredBinaries(&manifest.Manifest{}, dir, nil)
+	if err != nil {
+		t.Fatalf("UndeclaredBinaries: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("UndeclaredBinaries = %v, want the one file", got)
+	}
+}

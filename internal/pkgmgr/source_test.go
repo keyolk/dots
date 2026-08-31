@@ -202,7 +202,7 @@ func TestUndeclaredBinariesSkipsDeclaredOnes(t *testing.T) {
 		},
 	}
 
-	got, err := UndeclaredBinaries(m, dir)
+	got, err := UndeclaredBinaries(m, dir, nil)
 	if err != nil {
 		t.Fatalf("UndeclaredBinaries: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestUndeclaredBinariesIgnoresNonExecutables(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := UndeclaredBinaries(&manifest.Manifest{}, dir)
+	got, err := UndeclaredBinaries(&manifest.Manifest{}, dir, nil)
 	if err != nil {
 		t.Fatalf("UndeclaredBinaries: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestUndeclaredBinariesTreatsPackageNamesAsDeclared(t *testing.T) {
 	m := &manifest.Manifest{
 		Packages: map[string]*manifest.PkgList{"brew": {Packages: []string{"jq"}}},
 	}
-	got, _ := UndeclaredBinaries(m, dir)
+	got, _ := UndeclaredBinaries(m, dir, nil)
 	if len(got) != 0 {
 		t.Fatalf("UndeclaredBinaries = %v, want the declared package excluded", got)
 	}
@@ -243,7 +243,7 @@ func TestUndeclaredBinariesTreatsPackageNamesAsDeclared(t *testing.T) {
 
 func TestUndeclaredBinariesOnMissingDirIsNotAnError(t *testing.T) {
 	// A machine with no ~/.local/bin yet must not fail `dots pkg bin`.
-	got, err := UndeclaredBinaries(&manifest.Manifest{}, filepath.Join(t.TempDir(), "absent"))
+	got, err := UndeclaredBinaries(&manifest.Manifest{}, filepath.Join(t.TempDir(), "absent"), nil)
 	if err != nil {
 		t.Fatalf("UndeclaredBinaries: %v", err)
 	}

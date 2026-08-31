@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/spf13/cobra"
 
+	"github.com/keyolk/dots/internal/dotfile"
 	"github.com/keyolk/dots/internal/pkgmgr"
 	"github.com/keyolk/dots/internal/ui"
 )
@@ -223,9 +225,45 @@ reproduces it instead of leaving a file whose origin nobody remembers.`,
 				home, _ := os.UserHomeDir()
 				dir = filepath.Join(home, ".local", "bin")
 			}
-			undeclared, err := pkgmgr.UndeclaredBinaries(m, dir)
+			// Anything a dotfile group tracks is accounted for; only what no
+			// group and no package source claims is a mystery worth reporting.
+			tracked := map[string]bool{}
+			if entries, err := dotfile.NewScanner(m, hostname()).Scan(); err == nil {
+				for _, e := range entries {
+					if e.State != dotfile.Undeclared && e.State != dotfile.Missing {
+						tracked[filepath.Base(e.Path)] = true
+					}
+				}
+			}
+			// A path a group deliberately excludes -- a vendored shim, an
+			// editor backup, a compiled binary listed in the packages section
+			// -- is a decision already made. Reporting it as a mystery would
+			// ask the same question again on every run. Excludes are globs
+			// written against the work tree, so they are matched as globs
+			// rather than compared by name.
+			excluded := func(rel string) bool {
+				for _, g := range m.Dotfiles {
+					for _, pattern := range g.Exclude {
+						if ok, _ := doublestar.Match(pattern, rel); ok {
+							return true
+						}
+					}
+				}
+				return false
+			}
+
+			undeclared, err := pkgmgr.UndeclaredBinaries(m, dir, tracked)
 			if err != nil {
 				return err
+			}
+			if rel, rerr := filepath.Rel(m.Store.WorkTree, dir); rerr == nil {
+				kept := undeclared[:0]
+				for _, name := range undeclared {
+					if !excluded(filepath.Join(rel, name)) {
+						kept = append(kept, name)
+					}
+				}
+				undeclared = kept
 			}
 			if len(undeclared) > 0 {
 				fmt.Printf("\nundeclared in %s (%d)\n", dir, len(undeclared))
