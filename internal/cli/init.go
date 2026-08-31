@@ -284,6 +284,8 @@ name    = "tools"
 exclude = [".steampipe/config/github.spc"]
 include = [
   ".config/ccx/config.yaml",
+  ".config/atuin/config.toml",
+  ".config/starship.toml",
   ".config/pet/*.toml",
   ".config/nvim/*.ini",
   ".config/nvim/coc-settings.json",
