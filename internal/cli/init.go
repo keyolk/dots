@@ -163,6 +163,10 @@ include = [
   ".config/fish/functions/**/*.fish",
   ".config/fish/conf.d/**/*.fish",
   ".bashrc",
+  ".bash_profile",
+  ".mise.toml",
+  ".my.cnf",
+  ".tcshrc",
   ".profile",
 ]
 exclude = [".config/fish/config.fish.bak*", ".config/fish/*.original", ".config/fish/fishfile"]
@@ -250,7 +254,7 @@ exclude = [
 
 [[dotfiles]]
 name    = "git"
-include = [".gitconfig", ".themes.gitconfig", ".config/pass-git-helper/**/*",
+include = [".gitconfig", ".gitconfig-keyolk", ".themes.gitconfig", ".config/pass-git-helper/**/*",
            ".gitmodules", ".gitattributes"]
 exclude = [".config/pass-git-helper/*.bak.*"]
 
