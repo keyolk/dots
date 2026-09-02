@@ -158,3 +158,97 @@ func TestRunInteractiveExecutesTheCommand(t *testing.T) {
 		t.Fatal("RunInteractive reported success for an invalid command")
 	}
 }
+
+// TestCloneSetsAFetchRefspec guards a gap that hides itself: `git clone
+// --bare` writes no fetch refspec, so origin/<branch> never appears and
+// nothing -- not doctor, not `git status` -- can tell whether a commit has
+// been pushed. The store reads as healthy while every other machine is behind.
+func TestCloneSetsAFetchRefspec(t *testing.T) {
+	origin := originRepo(t, map[string]string{".bashrc": "x\n"})
+	root := t.TempDir()
+	work := filepath.Join(root, "home")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := Clone(origin, filepath.Join(root, "config.repo"), work)
+	if err != nil {
+		t.Fatalf("Clone: %v", err)
+	}
+	got, err := r.Run("config", "--get", "remote.origin.fetch")
+	if err != nil {
+		t.Fatalf("no fetch refspec was configured: %v", err)
+	}
+	if !strings.Contains(got, "refs/remotes/origin/") {
+		t.Fatalf("fetch refspec = %q, want one mapping into refs/remotes/origin/", got)
+	}
+}
+
+func TestUnpushedCountsCommitsTheRemoteLacks(t *testing.T) {
+	origin := originRepo(t, map[string]string{".bashrc": "x\n"})
+	root := t.TempDir()
+	work := filepath.Join(root, "home")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Clone(origin, filepath.Join(root, "config.repo"), work)
+	if err != nil {
+		t.Fatalf("Clone: %v", err)
+	}
+	if _, err := r.Run("config", "user.email", "t@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Run("config", "user.name", "t"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Checkout(); err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+
+	// Freshly cloned: nothing local the remote does not have.
+	if n, err := r.Unpushed(); err != nil || n != 0 {
+		t.Fatalf("Unpushed on a fresh clone = %d (%v), want 0", n, err)
+	}
+
+	write(t, r, ".bashrc", "changed\n")
+	if err := r.Add(".bashrc"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Commit("local only"); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := r.Unpushed(); err != nil || n != 1 {
+		t.Fatalf("Unpushed after one local commit = %d (%v), want 1", n, err)
+	}
+}
+
+// TestUnpushedReportsUnknownRatherThanZero matters because zero means "you are
+// up to date" -- claiming that when there is no remote to compare against
+// would be a false all-clear.
+func TestUnpushedReportsUnknownRatherThanZero(t *testing.T) {
+	r := newRepo(t) // no origin at all
+	write(t, r, ".bashrc", "x\n")
+	if err := r.Add(".bashrc"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Commit("init"); err != nil {
+		t.Fatal(err)
+	}
+	n, err := r.Unpushed()
+	if err != nil {
+		t.Fatalf("Unpushed: %v", err)
+	}
+	if n != -1 {
+		t.Fatalf("Unpushed with no remote = %d, want -1 (unknown)", n)
+	}
+}
+
+func TestUnpushedOnAbsentRepoIsUnknown(t *testing.T) {
+	n, err := New(filepath.Join(t.TempDir(), "absent"), t.TempDir()).Unpushed()
+	if err != nil {
+		t.Fatalf("Unpushed: %v", err)
+	}
+	if n != -1 {
+		t.Fatalf("Unpushed on an absent repo = %d, want -1", n)
+	}
+}

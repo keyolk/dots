@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -191,6 +192,34 @@ func (r *Repo) Show(spec string) ([]byte, error) {
 	return []byte(out), nil
 }
 
+// Unpushed counts commits on the current branch that the remote does not have.
+// It returns -1 when there is nothing to compare against -- no remote, or a
+// remote-tracking ref that has never been fetched -- so a caller can tell
+// "nothing to push" apart from "cannot tell".
+func (r *Repo) Unpushed() (int, error) {
+	if !r.Exists() {
+		return -1, nil
+	}
+	branch, err := r.Run("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return -1, nil //nolint:nilerr // a repo with no commits has no branch
+	}
+	branch = strings.TrimSpace(branch)
+
+	// Compare against the fetched remote ref rather than running git fetch:
+	// doctor should not reach the network, and a stale count is still a
+	// better signal than none.
+	out, err := r.Run("rev-list", "--count", "origin/"+branch+".."+branch)
+	if err != nil {
+		return -1, nil //nolint:nilerr // no origin, or never fetched
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return -1, nil //nolint:nilerr
+	}
+	return n, nil
+}
+
 // Add stages paths.
 func (r *Repo) Add(paths ...string) error {
 	if len(paths) == 0 {
@@ -240,6 +269,19 @@ func Clone(url, gitDir, workTree string) (*Repo, error) {
 	// the manifest, and a bare repo over $HOME that reports untracked files
 	// reports the entire home directory.
 	if _, err := r.Run("config", "status.showUntrackedFiles", "no"); err != nil {
+		return nil, err
+	}
+	// `git clone --bare` writes no fetch refspec, so origin/<branch> never
+	// appears and nothing can tell whether a commit has been pushed. Without
+	// this the store looks healthy while every other machine is behind.
+	if _, err := r.Run("config", "remote.origin.fetch",
+		"+refs/heads/*:refs/remotes/origin/*"); err != nil {
+		return nil, err
+	}
+	// The refspec only governs future fetches; the branches this clone already
+	// pulled down were written before it existed. One fetch populates
+	// refs/remotes/origin/ so the comparison works from the first command.
+	if _, err := r.Run("fetch", "origin"); err != nil {
 		return nil, err
 	}
 	return r, nil

@@ -1096,3 +1096,109 @@ exclude = [".local/bin/* (vendored)", ".local/bin/*.bak.*"]
 		t.Fatalf("the genuinely undeclared file was not reported:\n%s", out)
 	}
 }
+
+// TestDoctorReportsUnpushedCommits covers the gap that made --push easy to
+// forget: a commit that never left the machine protects nothing, and nothing
+// used to say so.
+func TestDoctorReportsUnpushedCommits(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+
+	// An origin to clone from, so the store has a remote to compare against.
+	origin := filepath.Join(root, "origin")
+	if err := os.MkdirAll(origin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(origin, ".bashrc"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"}, {"config", "user.email", "t@e.com"},
+		{"config", "user.name", "t"}, {"add", "-A"}, {"commit", "-q", "-m", "init"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = origin
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	manifestPath := filepath.Join(root, "dots.toml")
+
+	flagManifest, flagJSON, flagDryRun = "", false, false
+	initCmd := newRootCmd()
+	initCmd.SetArgs([]string{"--manifest", manifestPath, "init", "--clone-config", origin})
+	initCmd.SetOut(&bytes.Buffer{})
+	initCmd.SetErr(&bytes.Buffer{})
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	gitDir := filepath.Join(home, ".config.repo")
+	run := func(args ...string) {
+		t.Helper()
+		full := append([]string{"--git-dir=" + gitDir, "--work-tree=" + home}, args...)
+		cmd := exec.Command("git", full...)
+		cmd.Dir = home
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("config", "user.email", "t@e.com")
+	run("config", "user.name", "t")
+
+	// Fresh clone: doctor should say the store is up to date.
+	out := captureDoctor(t, manifestPath)
+	if !strings.Contains(out, "up to date") {
+		t.Fatalf("doctor on a fresh clone did not report being up to date:\n%s", out)
+	}
+
+	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "--", ".bashrc")
+	run("commit", "-q", "-m", "local only")
+
+	out = captureDoctor(t, manifestPath)
+	if !strings.Contains(out, "not pushed") {
+		t.Fatalf("doctor did not report the unpushed commit:\n%s", out)
+	}
+}
+
+// captureDoctor runs doctor and returns everything it printed.
+func captureDoctor(t *testing.T, manifestPath string) string {
+	t.Helper()
+	flagManifest, flagJSON, flagDryRun = "", false, false
+
+	stdout := os.Stdout
+	rp, wp, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = wp
+	done := make(chan string, 1)
+	go func() {
+		var b bytes.Buffer
+		_, _ = b.ReadFrom(rp)
+		done <- b.String()
+	}()
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"--manifest", manifestPath, "doctor"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	_ = cmd.Execute() // warnings are expected
+
+	wp.Close()
+	os.Stdout = stdout
+	captured := <-done
+	rp.Close()
+	return captured
+}

@@ -84,6 +84,17 @@ func checkStores(m *manifest.Manifest) []check {
 	}
 	out = append(out, check{"store", "ok", fmt.Sprintf("%d tracked path(s)", len(files)), ""})
 
+	// A commit that never left the machine protects nothing. --push on save is
+	// opt-in, so without this the gap is silent: the store looks healthy while
+	// every other machine is behind.
+	if n, _ := r.Unpushed(); n > 0 {
+		out = append(out, check{"remote", "warn",
+			fmt.Sprintf("%d commit(s) not pushed", n),
+			"dots save --push, or: config push"})
+	} else if n == 0 {
+		out = append(out, check{"remote", "ok", "up to date with origin", ""})
+	}
+
 	// A manifest carried over from the two-store layout still names a second
 	// repo. Say so rather than ignoring it silently, since its contents are no
 	// longer being tracked by anything.
