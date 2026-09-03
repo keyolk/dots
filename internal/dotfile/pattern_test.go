@@ -2,6 +2,8 @@ package dotfile
 
 import (
 	"testing"
+
+	"github.com/keyolk/dots/internal/manifest"
 )
 
 func TestStateStringsAreDistinct(t *testing.T) {
@@ -116,5 +118,89 @@ func TestScannerRepoReturnsTheStore(t *testing.T) {
 	sc := NewScanner(f.m, "testhost")
 	if sc.Repo().GitDir != f.m.Store.Config {
 		t.Fatal("Repo did not return the configured store")
+	}
+}
+
+// TestMaxDepthStopsAtTheShallowestUsefulLevel is a performance property with
+// a correctness consequence: a pattern without ** matches at a fixed depth, so
+// descending past it can only waste time. `.vim/*.vim` was walking 17137 files
+// under .vim/plugged to find three.
+func TestMaxDepthStopsAtTheShallowestUsefulLevel(t *testing.T) {
+	cases := map[string]int{
+		".vim/*.vim":            0, // files directly in .vim
+		".config/fish/*.fish":   0,
+		".claude/skills/**/*":   -1, // unbounded
+		".claude/hooks/**/*.py": -1,
+		".aws/cli/data/*":       0,
+	}
+	for pattern, want := range cases {
+		got := maxDepth([]string{pattern})[patternRoot(pattern)]
+		if got != want {
+			t.Fatalf("maxDepth(%q) = %d, want %d", pattern, got, want)
+		}
+	}
+}
+
+// TestMaxDepthTakesTheDeepestRequirement guards the case where one root
+// swallows another during deduplication: the surviving root has to walk deep
+// enough for everything beneath it.
+func TestMaxDepthTakesTheDeepestRequirement(t *testing.T) {
+	d := maxDepth([]string{".claude/*.md", ".claude/hooks/*.py"})
+	if got := d[".claude"]; got < 1 {
+		t.Fatalf("maxDepth for .claude = %d, want at least 1 to reach hooks/", got)
+	}
+}
+
+func TestMaxDepthUnboundedWins(t *testing.T) {
+	// One ** anywhere under a root means the whole subtree is in play.
+	d := maxDepth([]string{".claude/*.md", ".claude/skills/**/*"})
+	if got := d[".claude"]; got != -1 {
+		t.Fatalf("maxDepth = %d, want -1 when a ** pattern shares the root", got)
+	}
+}
+
+func TestDepthUnderCountsLevels(t *testing.T) {
+	cases := []struct {
+		root, path string
+		want       int
+	}{
+		{".vim", ".vim", 0},
+		{".vim", ".vim/autoload", 1},
+		{".vim", ".vim/plugged/foo", 2},
+		{".config/fish", ".config/fish/functions", 1},
+	}
+	for _, c := range cases {
+		if got := depthUnder(c.root, c.path); got != c.want {
+			t.Fatalf("depthUnder(%q, %q) = %d, want %d", c.root, c.path, got, c.want)
+		}
+	}
+}
+
+// TestShallowPatternDoesNotDescend is the end-to-end version: a file that only
+// a deeper walk would find must not appear for a depth-limited pattern.
+func TestShallowPatternDoesNotDescend(t *testing.T) {
+	f := newFixture(t, manifest.Group{Name: "editor", Include: []string{".vim/*.vim"}})
+	f.write(".vim/top.vim", "\" top\n")
+	f.write(".vim/plugged/some-plugin/deep.vim", "\" deep\n")
+
+	got := f.scan()
+	if _, ok := got[".vim/top.vim"]; !ok {
+		t.Fatal("the shallow match was missed")
+	}
+	if _, ok := got[".vim/plugged/some-plugin/deep.vim"]; ok {
+		t.Fatal("a file below the pattern's depth was matched")
+	}
+}
+
+func TestRecursivePatternStillDescends(t *testing.T) {
+	f := newFixture(t, manifest.Group{Name: "claude", Include: []string{".claude/skills/**/*"}})
+	f.write(".claude/skills/a/SKILL.md", "x")
+	f.write(".claude/skills/a/b/c/deep.md", "x")
+
+	got := f.scan()
+	for _, want := range []string{".claude/skills/a/SKILL.md", ".claude/skills/a/b/c/deep.md"} {
+		if _, ok := got[want]; !ok {
+			t.Fatalf("%s was not matched by a ** pattern", want)
+		}
 	}
 }

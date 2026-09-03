@@ -327,12 +327,16 @@ include = [
 [[dotfiles]]
 name     = "templated"
 template = true
+# Deliberately narrow. A ** wildcard here is expensive: .config and .claude hold
+# ~45000 files between them, and walking both to find templates that live in
+# neither cost more than the rest of a status put together. Add a line when a
+# template appears somewhere new -- the cost is one directory, not a subtree.
 include  = [
-  ".config/**/*.tmpl",
-  ".claude/**/*.tmpl",
   ".ccproxy/*.tmpl",
-  ".aws/**/*.tmpl",
-  ".local/bin/**/*.tmpl",
+  ".config/*.tmpl",
+  ".claude/*.tmpl",
+  ".aws/*.tmpl",
+  ".local/bin/*.tmpl",
 ]
 # A plugin cache under .ccproxy ships its own .tmpl files that are not this
 # machine's config.

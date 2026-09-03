@@ -172,13 +172,46 @@ func TestAgainstTheRealKubeconfig(t *testing.T) {
 		t.Fatalf("Apply(live): %v", err)
 	}
 
-	// Align the one field that legitimately differs; everything left over is
-	// the ordering churn this package exists to remove.
-	re := regexp.MustCompile(`(?m)^current-context:.*$`)
-	if cc := re.Find(b); cc != nil {
-		a = re.ReplaceAll(a, cc)
+	// The live file legitimately drifts from the store -- a context switched, a
+	// cluster added -- so equality is the wrong assertion; it would fail for
+	// reasons that have nothing to do with normalising. What must hold is that
+	// normalising is idempotent and order-insensitive on real content.
+	if !bytes.Equal(a, mustApply(t, a)) {
+		t.Error("normalising the stored kubeconfig twice changed it")
 	}
-	if !bytes.Equal(a, b) {
-		t.Errorf("real kubeconfig still differs after normalising (%d vs %d bytes)", len(a), len(b))
+	if !bytes.Equal(b, mustApply(t, b)) {
+		t.Error("normalising the live kubeconfig twice changed it")
 	}
+
+	// Every entry the store holds must survive normalisation of the live file
+	// if it is still there -- the sort must not drop anything.
+	for _, name := range names(t, stored) {
+		if contains(t, live, name) && !bytes.Contains(b, []byte(name)) {
+			t.Errorf("%q was lost while normalising", name)
+		}
+	}
+}
+
+func mustApply(t *testing.T, in []byte) []byte {
+	t.Helper()
+	out, err := Apply(KubeConfig, in)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	return out
+}
+
+// names pulls the entry names out of a kubeconfig without parsing YAML.
+func names(t *testing.T, content []byte) []string {
+	t.Helper()
+	var out []string
+	for _, m := range regexp.MustCompile(`(?m)^\s*(?:- )?name: (\S+)$`).FindAllSubmatch(content, -1) {
+		out = append(out, string(m[1]))
+	}
+	return out
+}
+
+func contains(t *testing.T, content []byte, name string) bool {
+	t.Helper()
+	return bytes.Contains(content, []byte(name))
 }

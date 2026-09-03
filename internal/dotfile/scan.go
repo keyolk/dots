@@ -409,8 +409,15 @@ func (s *Scanner) matchGroup(g manifest.Group) ([]string, error) {
 		}
 	}
 
+	// How deep each root has to be walked. A pattern without `**` matches at a
+	// fixed depth, so descending past it can only waste time -- `.vim/*.vim`
+	// needs one level and was walking 17137 files under .vim/plugged to find
+	// three.
+	depth := maxDepth(globs)
+
 	for _, root := range roots {
 		abs := filepath.Join(s.m.Store.WorkTree, root)
+		limit := depth[root]
 		err := filepath.WalkDir(abs, func(p string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				// An unreadable subtree is skipped: a permission-denied on one
@@ -430,6 +437,14 @@ func (s *Scanner) matchGroup(g manifest.Group) ([]string, error) {
 
 			if d.IsDir() {
 				if s.prune(g, rel, d.Name()) {
+					return fs.SkipDir
+				}
+				// limit < 0 means some pattern under this root uses `**`, so
+				// the whole subtree is in play. Otherwise a directory deeper
+				// than the pattern can reach holds nothing worth walking --
+				// the root itself is depth 0, so a limit of 0 still descends
+				// into it and stops at its subdirectories.
+				if limit >= 0 && depthUnder(root, rel) > limit {
 					return fs.SkipDir
 				}
 				return nil
@@ -507,6 +522,49 @@ func isCompiledBinary(path string) bool {
 // the like are runtime state that git cannot meaningfully hold.
 func trackable(m os.FileMode) bool {
 	return m.IsRegular() || m&os.ModeSymlink != 0
+}
+
+// maxDepth reports, per root, how many directory levels below it a match can
+// appear. A `**` anywhere in a pattern makes the depth unbounded, reported as
+// -1; otherwise it is the number of path separators after the root.
+func maxDepth(patterns []string) map[string]int {
+	out := map[string]int{}
+	for _, pattern := range patterns {
+		pattern = strings.TrimPrefix(pattern, "./")
+		root := patternRoot(pattern)
+		if strings.Contains(pattern, "**") {
+			out[root] = -1
+			continue
+		}
+		rest := strings.TrimPrefix(strings.TrimPrefix(pattern, root), "/")
+		d := strings.Count(rest, "/")
+		if cur, ok := out[root]; !ok || (cur >= 0 && d > cur) {
+			out[root] = d
+		}
+	}
+	// A root that swallowed a narrower one during deduplication inherits the
+	// deepest requirement of anything beneath it.
+	for root, d := range out {
+		for other, od := range out {
+			if other != root && isUnder(other, root) {
+				if od < 0 || d < 0 {
+					out[root] = -1
+				} else if extra := strings.Count(strings.TrimPrefix(other, root+"/"), "/") + 1 + od; extra > out[root] {
+					out[root] = extra
+				}
+			}
+		}
+	}
+	return out
+}
+
+// depthUnder counts the directory levels between a root and a path below it.
+func depthUnder(root, path string) int {
+	rest := strings.TrimPrefix(strings.TrimPrefix(path, root), "/")
+	if rest == "" {
+		return 0
+	}
+	return strings.Count(rest, "/") + 1
 }
 
 // alwaysPrune are directories no dotfile manifest should ever descend into.
