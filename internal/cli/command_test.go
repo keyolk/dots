@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1201,4 +1202,120 @@ func captureDoctor(t *testing.T, manifestPath string) string {
 	captured := <-done
 	rp.Close()
 	return captured
+}
+
+// TestConfigShowsWhereTheStorePoints exists because that question used to
+// require a git incantation: doctor said "up to date with origin" without ever
+// naming the origin.
+func TestConfigShowsWhereTheStorePoints(t *testing.T) {
+	e := newEnv(t, baseManifest)
+	// Give the store a remote to report.
+	dir := filepath.Join(e.root, "config.repo")
+	cmd := exec.Command("git", "--git-dir="+dir, "--work-tree="+e.work,
+		"remote", "add", "origin", "https://example.com/me/config.git")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git remote add: %v\n%s", err, out)
+	}
+
+	out, err := e.run("config")
+	if err != nil {
+		t.Fatalf("config: %v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"https://example.com/me/config.git", // the remote
+		dir,                                 // the repo on disk
+		e.work,                              // the work tree
+		e.manifest,                          // the file to edit
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("config did not report %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestConfigSaysWhenThereIsNoRemote(t *testing.T) {
+	// Silence here would read as "fine"; a store with nowhere to push is not.
+	e := newEnv(t, baseManifest)
+	out, err := e.run("config")
+	if err != nil {
+		t.Fatalf("config: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "none configured") {
+		t.Fatalf("config did not flag the missing remote:\n%s", out)
+	}
+}
+
+func TestConfigListsGroupsWithMatchCounts(t *testing.T) {
+	e := newEnv(t, baseManifest)
+	e.write(".bashrc", "x\n")
+
+	out, err := e.run("config")
+	if err != nil {
+		t.Fatalf("config: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "shell") {
+		t.Fatalf("config did not list the groups:\n%s", out)
+	}
+	// The count is what turns a list of globs into something checkable.
+	if !strings.Contains(out, "matched") {
+		t.Fatalf("config did not report match counts:\n%s", out)
+	}
+}
+
+func TestConfigGroupsPrintsPatterns(t *testing.T) {
+	e := newEnv(t, baseManifest)
+	out, err := e.run("config", "groups", "shell")
+	if err != nil {
+		t.Fatalf("config groups: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, ".bashrc") {
+		t.Fatalf("the group's include patterns were not printed:\n%s", out)
+	}
+}
+
+func TestConfigGroupsRejectsAnUnknownName(t *testing.T) {
+	e := newEnv(t, baseManifest)
+	if _, err := e.run("config", "groups", "no-such-group"); err == nil {
+		t.Fatal("an unknown group name was accepted")
+	}
+}
+
+func TestConfigPathIsScriptable(t *testing.T) {
+	// `$EDITOR "$(dots config path)"` has to work, so the output is the path
+	// and nothing else.
+	e := newEnv(t, baseManifest)
+	out, err := e.run("config", "path")
+	if err != nil {
+		t.Fatalf("config path: %v\n%s", err, out)
+	}
+	if strings.TrimSpace(out) != e.manifest {
+		t.Fatalf("config path = %q, want exactly the manifest path", strings.TrimSpace(out))
+	}
+}
+
+func TestConfigJSONIsMachineReadable(t *testing.T) {
+	e := newEnv(t, baseManifest)
+	out, err := e.run("config", "--json")
+	if err != nil {
+		t.Fatalf("config --json: %v\n%s", err, out)
+	}
+	var v struct {
+		Manifest string `json:"manifest"`
+		Store    struct {
+			GitDir   string `json:"git_dir"`
+			WorkTree string `json:"work_tree"`
+		} `json:"store"`
+		Groups []struct {
+			Name string `json:"name"`
+		} `json:"groups"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &v); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+	if v.Manifest != e.manifest {
+		t.Fatalf("manifest = %q, want %q", v.Manifest, e.manifest)
+	}
+	if len(v.Groups) == 0 {
+		t.Fatal("no groups in the JSON output")
+	}
 }

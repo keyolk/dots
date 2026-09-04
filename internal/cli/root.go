@@ -63,6 +63,7 @@ aliases already use, so adopting dots does not invalidate them.`,
 		newPruneCmd(),
 		newSecretCmd(),
 		newPkgCmd(),
+		newConfigCmd(),
 		newDoctorCmd(),
 		newInitCmd(),
 	)

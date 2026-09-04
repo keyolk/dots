@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -92,7 +93,13 @@ func checkStores(m *manifest.Manifest) []check {
 			fmt.Sprintf("%d commit(s) not pushed", n),
 			"dots save --push, or: config push"})
 	} else if n == 0 {
-		out = append(out, check{"remote", "ok", "up to date with origin", ""})
+		// Name the remote rather than saying "origin": which repository this
+		// machine is pointed at is the thing worth confirming at a glance.
+		remote := "origin"
+		if url, err := r.Run("remote", "get-url", "origin"); err == nil {
+			remote = strings.TrimSpace(url)
+		}
+		out = append(out, check{"remote", "ok", "up to date with " + remote, ""})
 	}
 
 	// A manifest carried over from the two-store layout still names a second
