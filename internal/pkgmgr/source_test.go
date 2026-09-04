@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/keyolk/dots/internal/manifest"
@@ -281,5 +282,36 @@ func TestCheckBinariesSkipsOtherOS(t *testing.T) {
 	}
 	if got := CheckBinaries(m); len(got) != 0 {
 		t.Fatalf("CheckBinaries = %v, want nothing for another OS", got)
+	}
+}
+
+// TestBunHeaderIsNotAPackage covers a parse bug that fed itself: bun's first
+// line names the install directory and ends with a changing count, so matching
+// it by the "node_modules" suffix stopped working. The path was then adopted
+// into the manifest as a package name, where it reported as missing on every
+// run because the count moves.
+func TestBunHeaderIsNotAPackage(t *testing.T) {
+	out := `/Users/me/.bun/install/global node_modules (505)
+├── @googleworkspace/cli@0.3.4
+├── @marp-team/marp-cli@4.4.0
+└── happy-coder@1.1.9
+`
+	got := builtins["bun"].parse(out)
+	want := []string{"@googleworkspace/cli", "@marp-team/marp-cli", "happy-coder"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parse = %v, want %v", got, want)
+	}
+	for _, name := range got {
+		if strings.Contains(name, "node_modules") || strings.Contains(name, "/Users/") {
+			t.Fatalf("the header leaked into the package list: %q", name)
+		}
+	}
+}
+
+func TestBunHeaderWithoutACountIsAlsoSkipped(t *testing.T) {
+	// Older bun prints the header with no count; both forms must be ignored.
+	got := builtins["bun"].parse("/Users/me/.bun/install/global node_modules\n└── typescript@5.4.0\n")
+	if len(got) != 1 || got[0] != "typescript" {
+		t.Fatalf("parse = %v, want just the package", got)
 	}
 }

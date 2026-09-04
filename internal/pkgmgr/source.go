@@ -174,11 +174,25 @@ func (s Source) parse(out string) []string {
 			}
 			line = strings.Fields(line)[0]
 		case "bun":
-			// Tree output: "├── typescript@5.4.0".
-			line = strings.TrimLeft(line, "├└─│ ")
-			if line == "" || strings.HasSuffix(line, "node_modules") {
+			// Tree output, with a header naming the install directory:
+			//
+			//   /Users/me/.bun/install/global node_modules (505)
+			//   ├── typescript@5.4.0
+			//   └── @scope/name@1.0.0
+			//
+			// Only the branch lines are packages. Matching the header by
+			// suffix missed it once the count was appended, and the path was
+			// adopted into the manifest as a package name -- where it then
+			// reported as missing on every run, since the count changes.
+			if !strings.ContainsAny(line, "├└") {
 				continue
 			}
+			line = strings.TrimLeft(line, "├└─│ ")
+			if line == "" {
+				continue
+			}
+			// A scoped package keeps its leading @; only the version suffix
+			// goes.
 			if i := strings.LastIndex(line, "@"); i > 0 {
 				line = line[:i]
 			}
