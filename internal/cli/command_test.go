@@ -1319,3 +1319,179 @@ func TestConfigJSONIsMachineReadable(t *testing.T) {
 		t.Fatal("no groups in the JSON output")
 	}
 }
+
+// TestPullBringsInARemoteCommit is the half of the cycle save does not cover.
+func TestPullBringsInARemoteCommit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+
+	origin := filepath.Join(root, "origin.git")
+	if out, err := exec.Command("git", "init", "--bare", "-q", "-b", "main", origin).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+
+	// Seed the origin through a scratch clone.
+	seed := filepath.Join(root, "seed")
+	mustGit(t, "", "clone", "-q", origin, seed)
+	if err := os.WriteFile(filepath.Join(seed, ".testrc"), []byte("v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, seed, "config", "user.email", "t@e.com")
+	mustGit(t, seed, "config", "user.name", "t")
+	mustGit(t, seed, "add", "-A")
+	mustGit(t, seed, "commit", "-q", "-m", "seed")
+	mustGit(t, seed, "push", "-q", "origin", "main")
+
+	e := newEnvClonedFrom(t, origin)
+
+	// Another machine pushes.
+	if err := os.WriteFile(filepath.Join(seed, ".testrc"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, seed, "commit", "-q", "-am", "v2")
+	mustGit(t, seed, "push", "-q", "origin", "main")
+
+	out, err := e.run("pull")
+	if err != nil {
+		t.Fatalf("pull: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "pulled") || !strings.Contains(out, ".testrc") {
+		t.Fatalf("pull did not report what it brought in:\n%s", out)
+	}
+	got, err := os.ReadFile(filepath.Join(e.work, ".testrc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(got)) != "v2" {
+		t.Fatalf("the file was not updated: %q", got)
+	}
+}
+
+// TestPullRefusesToClobberLocalEdits is the property that makes pull safe to
+// run without thinking: losing an uncommitted edit is not recoverable.
+func TestPullRefusesToClobberLocalEdits(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	origin := filepath.Join(root, "origin.git")
+	if out, err := exec.Command("git", "init", "--bare", "-q", "-b", "main", origin).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	seed := filepath.Join(root, "seed")
+	mustGit(t, "", "clone", "-q", origin, seed)
+	if err := os.WriteFile(filepath.Join(seed, ".testrc"), []byte("v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, seed, "config", "user.email", "t@e.com")
+	mustGit(t, seed, "config", "user.name", "t")
+	mustGit(t, seed, "add", "-A")
+	mustGit(t, seed, "commit", "-q", "-m", "seed")
+	mustGit(t, seed, "push", "-q", "origin", "main")
+
+	e := newEnvClonedFrom(t, origin)
+
+	// Edit locally without committing, and have the remote move too.
+	if err := os.WriteFile(filepath.Join(e.work, ".testrc"), []byte("local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(seed, ".testrc"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, seed, "commit", "-q", "-am", "v2")
+	mustGit(t, seed, "push", "-q", "origin", "main")
+
+	out, err := e.run("pull")
+	if err == nil {
+		t.Fatalf("pull overwrote a local edit:\n%s", out)
+	}
+	got, _ := os.ReadFile(filepath.Join(e.work, ".testrc"))
+	if strings.TrimSpace(string(got)) != "local" {
+		t.Fatalf("the local edit was lost: %q", got)
+	}
+
+	// --force says discard, and must actually discard: git merge refuses a
+	// dirty work tree on its own, so the flag has to clear it first.
+	if out, err := e.run("pull", "--force"); err != nil {
+		t.Fatalf("pull --force: %v\n%s", err, out)
+	}
+	got, _ = os.ReadFile(filepath.Join(e.work, ".testrc"))
+	if strings.TrimSpace(string(got)) != "v2" {
+		t.Fatalf("pull --force did not take the remote version: %q", got)
+	}
+}
+
+func TestPullOnAnUpToDateStoreSaysSo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	origin := filepath.Join(root, "origin.git")
+	if out, err := exec.Command("git", "init", "--bare", "-q", "-b", "main", origin).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	seed := filepath.Join(root, "seed")
+	mustGit(t, "", "clone", "-q", origin, seed)
+	if err := os.WriteFile(filepath.Join(seed, ".testrc"), []byte("v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, seed, "config", "user.email", "t@e.com")
+	mustGit(t, seed, "config", "user.name", "t")
+	mustGit(t, seed, "add", "-A")
+	mustGit(t, seed, "commit", "-q", "-m", "seed")
+	mustGit(t, seed, "push", "-q", "origin", "main")
+
+	e := newEnvClonedFrom(t, origin)
+	out, err := e.run("pull")
+	if err != nil {
+		t.Fatalf("pull: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "up to date") {
+		t.Fatalf("pull on an unchanged store said:\n%s", out)
+	}
+}
+
+func mustGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// newEnvClonedFrom builds an env whose store is a real clone of origin, so
+// pull has an upstream to talk to.
+func newEnvClonedFrom(t *testing.T, origin string) *env {
+	t.Helper()
+	root := t.TempDir()
+	work := filepath.Join(root, "home")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitDir := filepath.Join(root, "config.repo")
+
+	mustGit(t, "", "clone", "--bare", "-q", origin, gitDir)
+	for _, args := range [][]string{
+		{"config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"},
+		{"config", "user.email", "t@e.com"},
+		{"config", "user.name", "t"},
+		{"config", "status.showUntrackedFiles", "no"},
+		{"fetch", "-q", "origin"},
+		{"checkout", "-q"},
+	} {
+		full := append([]string{"--git-dir=" + gitDir, "--work-tree=" + work}, args...)
+		mustGit(t, work, full...)
+	}
+
+	manifest := filepath.Join(root, "dots.toml")
+	body := "[store]\nconfig = \"" + gitDir + "\"\nwork_tree = \"" + work + "\"\n\n" +
+		"[secrets]\nidentity = \"" + filepath.Join(root, "id.age") + "\"\nvault = \"vault.age\"\n\n" +
+		"[[dotfiles]]\nname = \"test\"\ninclude = [\".testrc\"]\n"
+	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return &env{t: t, root: root, work: work, manifest: manifest}
+}
