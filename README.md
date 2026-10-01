@@ -9,6 +9,7 @@ dots add                         # commit declared files the store never saw
 dots save -M "message"           # stage and commit everything declared
 dots push                        # send this machine's commits out
 dots pull                        # bring in what another machine pushed
+dots triage                      # classify files no group accounts for
 dots prune                       # untrack what the manifest no longer declares
 dots apply                       # render templates, substituting secrets
 dots secret set <name>           # store a secret in the age vault
@@ -202,6 +203,80 @@ Adding a second machine means adding its public key to `recipients` and
 re-saving from a machine that can already decrypt. There is no way around
 moving one key by hand, and any tool that claims otherwise is shipping your key
 somewhere it should not be.
+
+## Keeping the manifest current
+
+A manifest decays by omission. Globs mean a new hook is reported the moment it
+appears — but only inside a pattern that already reaches it. A file of a shape
+no group named is invisible for exactly the same reason a bare repo with
+`status.showUntrackedFiles=no` cannot see an unadded file, one level up.
+
+Measured on this machine after `status` reported **0 untracked, 0 undeclared**:
+2237 files sitting in directories that already hold a tracked file, claimed by
+nothing.
+
+`triage` surveys those directories and classifies what it finds by shape:
+
+```
+ignore       8  .ccproxy/*.lock                 generated
+ignore       3  .ccproxy/*.bak*                 backup copy
+ignore    2108  .spin/.watchman-cookie-…-*      2108 files sharing one prefix
+declare      1  .gnupg/gpg-agent.conf           authored
+?            1  .ssh/config                     no rule matched
+
+2177 path(s) classified in 46 pattern(s), 60 needing a decision
+dots triage --apply
+```
+
+`--apply` writes those lines into the manifest. `--paths` lists the files
+behind each pattern. Nothing is deleted and no file is moved: the manifest
+gains include and exclude lines, and `dots status` acts on them from then on.
+
+`dots doctor` reports the count, so the survey runs on a schedule you already
+keep rather than needing one of its own.
+
+### What it will not decide for you
+
+The report is only worth reading if everything on it is a real decision, so
+three kinds of guess are refused outright.
+
+**An exclude that would reach a tracked file is dropped**, named, and left out
+of the manifest — a pattern written for a file's neighbours must not untrack
+the file. On this machine `.claude/*.json` was refused because
+`.claude/settings.json` is tracked.
+
+**A name-based rule never widens to an extension.** "cache" and "history"
+match a name; the glob they would imply (`*.json`) would also swallow every
+config file that lands in that directory later. Only a suffix rule may
+generalise, because the suffix is what it matched.
+
+**Nothing is declared at the work tree root.** `$HOME` is where everything
+lands, so "it is a `.md`" says nothing there — the rule found ten draft replies
+and proposed tracking every future `*.md` in the home directory. Ignore rules
+still apply at the root, since a backup is a backup wherever it sits.
+
+`.json` is deliberately absent from the authored list. On this machine it is
+state far more often than config — `badges.json`, `policy-limits.json`,
+`gh-pr-status-cache.json` — so a `.json` file is reported as a question.
+
+The survey covers directories that already hold a tracked file, not every
+directory a pattern's root touches. An include root is not a claim on a
+directory: `.aws/**/*.tmpl` says templates under `~/.aws` are declared, and
+surveying by root walked 145481 files there, nearly all of them an AWS CLI
+credential cache.
+
+A file an exclude already covers is never reported. The exclude is a decision
+already made, and re-reporting it is how a report becomes one you learn to
+skip.
+
+### The manifest is edited as text
+
+`--apply` inserts lines rather than decoding and re-encoding the file, because
+every TOML library drops comments on the way out — and in this manifest the
+comment is the part worth keeping. A round-trip that silently deletes
+`# generated state, not config` turns a reviewed decision back into an
+unexplained line. The result is parsed before it replaces the original, so a
+bad edit cannot leave the machine with a manifest no command can load.
 
 ## Pruning what should never have been tracked
 
