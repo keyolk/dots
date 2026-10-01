@@ -673,6 +673,22 @@ func isUnder(path, ancestor string) bool {
 	return strings.HasPrefix(path, ancestor+"/")
 }
 
+// Declared returns every path an active group claims, sorted. It is what a
+// proposed exclude has to be checked against: a pattern that also covers a
+// tracked file would untrack it on the next prune.
+func (s *Scanner) Declared() ([]string, error) {
+	m, err := s.declared()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(m))
+	for p := range m {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // Repo returns the store.
 func (s *Scanner) Repo() *git.Repo { return s.repo }
 

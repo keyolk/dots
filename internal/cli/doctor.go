@@ -53,6 +53,7 @@ sources are consistent, and what to run for each thing that is not.`,
 			checks = append(checks, checkStores(m)...)
 			checks = append(checks, checkVault(m))
 			checks = append(checks, checkDotfiles(m))
+			checks = append(checks, checkUnclaimed(m))
 			checks = append(checks, checkPackages(m))
 			checks = append(checks, checkPath())
 
@@ -152,6 +153,24 @@ func checkDotfiles(m *manifest.Manifest) check {
 			counts[dotfile.Modified], counts[dotfile.Untracked],
 			counts[dotfile.Missing], counts[dotfile.Undeclared]),
 		"dots status, then dots save"}
+}
+
+// checkUnclaimed is the periodic half of triage. A manifest decays by
+// omission: files appear beside tracked ones and nothing reports them, which
+// is the same silence a bare repo with status.showUntrackedFiles=no produces
+// and the reason this tool exists. doctor already runs on a schedule people
+// keep, so the survey belongs here rather than in a daemon.
+func checkUnclaimed(m *manifest.Manifest) check {
+	orphans, err := dotfile.NewScanner(m, hostname()).Orphans()
+	if err != nil {
+		return check{"unclaimed", "fail", err.Error(), ""}
+	}
+	if len(orphans) == 0 {
+		return check{"unclaimed", "ok", "every file beside a tracked one is accounted for", ""}
+	}
+	return check{"unclaimed", "warn",
+		fmt.Sprintf("%d path(s) no group claims", len(orphans)),
+		"dots triage"}
 }
 
 func checkPackages(m *manifest.Manifest) check {

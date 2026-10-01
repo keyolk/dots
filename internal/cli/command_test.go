@@ -3,11 +3,16 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bmatcuk/doublestar/v4"
+
+	"github.com/keyolk/dots/internal/manifest"
 )
 
 // env is a fully isolated dots installation: its own work tree, its own bare
@@ -1667,5 +1672,230 @@ func TestPushReportsUncommittedDeclaredFiles(t *testing.T) {
 	}
 	if !strings.Contains(out, "not committed") {
 		t.Fatalf("push stayed quiet about uncommitted work:\n%s", out)
+	}
+}
+
+// triageEnv builds a work tree whose manifest declares one group, so triage
+// has a directory with a tracked file to survey.
+func triageEnv(t *testing.T) *env {
+	t.Helper()
+	return newEnv(t, `[store]
+config    = "{{root}}/config.repo"
+work_tree = "{{work}}"
+
+[secrets]
+identity = "{{root}}/id.age"
+vault    = "vault.age"
+
+[[dotfiles]]
+name    = "claude"
+include = [
+  ".claude/hooks/**/*.py",
+]
+exclude = [
+  ".claude/**/*.pyc",     # compiled, regenerated on every run
+]
+`)
+}
+
+// TestTriageClassifiesByShape covers the three verdicts in one run: a log is
+// derived, a .md beside tracked config is authored, and a file no rule
+// recognises is a question rather than a guess.
+func TestTriageClassifiesByShape(t *testing.T) {
+	e := triageEnv(t)
+	e.write(".claude/hooks/guard.py", "x")
+	if out, err := e.run("add", "--commit"); err != nil {
+		t.Fatalf("add: %v\n%s", err, out)
+	}
+	e.write(".claude/hooks/daemon.log", "noise")
+	e.write(".claude/hooks/README.md", "docs")
+	e.write(".claude/hooks/state", "opaque")
+
+	out, err := e.run("triage")
+	if err != nil {
+		t.Fatalf("triage: %v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"ignore", ".claude/hooks/*.log",
+		"declare", ".claude/hooks/*.md",
+		"?", ".claude/hooks/state",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("triage output is missing %q:\n%s", want, out)
+		}
+	}
+	// Without --apply nothing may change.
+	if body, _ := os.ReadFile(e.manifest); strings.Contains(string(body), "*.log") {
+		t.Fatalf("triage wrote to the manifest without --apply:\n%s", body)
+	}
+}
+
+// TestTriageApplyWritesPatternsAndKeepsComments: the whole point of --apply is
+// that the next run is quieter, and the whole point of editing text is that the
+// reasons survive.
+func TestTriageApplyWritesPatternsAndKeepsComments(t *testing.T) {
+	e := triageEnv(t)
+	e.write(".claude/hooks/guard.py", "x")
+	if out, err := e.run("add", "--commit"); err != nil {
+		t.Fatalf("add: %v\n%s", err, out)
+	}
+	e.write(".claude/hooks/daemon.log", "noise")
+	e.write(".claude/hooks/other.log", "more noise")
+
+	if out, err := e.run("triage", "--apply"); err != nil {
+		t.Fatalf("triage --apply: %v\n%s", err, out)
+	}
+	body, err := os.ReadFile(e.manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `".claude/hooks/*.log"`) {
+		t.Fatalf("the exclude was not written:\n%s", body)
+	}
+	if !strings.Contains(string(body), "# compiled, regenerated on every run") {
+		t.Fatalf("the edit dropped a comment:\n%s", body)
+	}
+
+	// The second run is the one that proves it: a decision recorded is a
+	// decision no longer reported.
+	out, err := e.run("triage")
+	if err != nil {
+		t.Fatalf("triage: %v\n%s", err, out)
+	}
+	if strings.Contains(out, ".log") {
+		t.Fatalf("triage still reports what it just excluded:\n%s", out)
+	}
+}
+
+// TestTriageRefusesAnExcludeThatCoversATrackedFile is the property that makes
+// --apply safe to run: an exclude reaching a tracked path would untrack it on
+// the next prune.
+func TestTriageRefusesAnExcludeThatCoversATrackedFile(t *testing.T) {
+	e := newEnv(t, `[store]
+config    = "{{root}}/config.repo"
+work_tree = "{{work}}"
+
+[secrets]
+identity = "{{root}}/id.age"
+vault    = "vault.age"
+
+[[dotfiles]]
+name    = "spin"
+include = [".spin/config"]
+`)
+	e.write(".spin/config", "real config")
+	if out, err := e.run("add", "--commit"); err != nil {
+		t.Fatalf("add: %v\n%s", err, out)
+	}
+	// Enough cookies to trip the bulk rule, sharing a prefix with nothing but
+	// each other.
+	for i := 0; i < 12; i++ {
+		e.write(fmt.Sprintf(".spin/config-cookie-%d", i), "")
+	}
+
+	out, err := e.run("triage", "--apply")
+	if err != nil {
+		t.Fatalf("triage --apply: %v\n%s", err, out)
+	}
+	body, _ := os.ReadFile(e.manifest)
+	m, err := manifest.Load(e.manifest)
+	if err != nil {
+		t.Fatalf("the manifest no longer loads: %v\n%s", err, body)
+	}
+	for _, ex := range m.Dotfiles[0].Exclude {
+		if ok, _ := doublestar.Match(ex, ".spin/config"); ok {
+			t.Fatalf("exclude %q would untrack the tracked .spin/config:\n%s", ex, body)
+		}
+	}
+}
+
+// TestTriageDoesNotInferDeclareAtTheWorkTreeRoot: $HOME is where everything
+// lands, so "it is a .md" says nothing there. The rule found ten draft replies
+// and proposed tracking every future *.md in the home directory.
+func TestTriageDoesNotInferDeclareAtTheWorkTreeRoot(t *testing.T) {
+	e := newEnv(t, `[store]
+config    = "{{root}}/config.repo"
+work_tree = "{{work}}"
+
+[secrets]
+identity = "{{root}}/id.age"
+vault    = "vault.age"
+
+[[dotfiles]]
+name    = "shell"
+include = [".bashrc"]
+`)
+	e.write(".bashrc", "export X=1")
+	if out, err := e.run("add", "--commit"); err != nil {
+		t.Fatalf("add: %v\n%s", err, out)
+	}
+	e.write("draft-reply.md", "a draft, not config")
+
+	out, err := e.run("triage")
+	if err != nil {
+		t.Fatalf("triage: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "declare") {
+		t.Fatalf("triage proposed declaring a file at the work tree root:\n%s", out)
+	}
+	if !strings.Contains(out, "draft-reply.md") {
+		t.Fatalf("the file was not reported at all:\n%s", out)
+	}
+}
+
+// TestDoctorReportsUnclaimedPaths: triage only helps if something points at
+// it on a schedule people already keep.
+func TestDoctorReportsUnclaimedPaths(t *testing.T) {
+	e := triageEnv(t)
+	e.write(".claude/hooks/guard.py", "x")
+	if out, err := e.run("add", "--commit"); err != nil {
+		t.Fatalf("add: %v\n%s", err, out)
+	}
+	e.write(".claude/hooks/daemon.log", "noise")
+
+	out, _ := e.run("doctor")
+	if !strings.Contains(out, "unclaimed") || !strings.Contains(out, "dots triage") {
+		t.Fatalf("doctor did not point at triage:\n%s", out)
+	}
+}
+
+// TestTriageRefusesARuleMatchedExcludeOverATrackedFile is the same property as
+// the bulk case, through the rule path: a tracked file that happens to look
+// derived -- a log you deliberately keep -- must not be swept up by the glob
+// written for its neighbours.
+func TestTriageRefusesARuleMatchedExcludeOverATrackedFile(t *testing.T) {
+	e := newEnv(t, `[store]
+config    = "{{root}}/config.repo"
+work_tree = "{{work}}"
+
+[secrets]
+identity = "{{root}}/id.age"
+vault    = "vault.age"
+
+[[dotfiles]]
+name    = "logs"
+include = [".logs/keep.log"]
+`)
+	e.write(".logs/keep.log", "deliberately tracked")
+	if out, err := e.run("add", "--commit"); err != nil {
+		t.Fatalf("add: %v\n%s", err, out)
+	}
+	e.write(".logs/noise.log", "not tracked")
+
+	out, err := e.run("triage", "--apply")
+	if err != nil {
+		t.Fatalf("triage --apply: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "refused") {
+		t.Fatalf("triage did not refuse the exclude:\n%s", out)
+	}
+	m, err := manifest.Load(e.manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ex := range m.Dotfiles[0].Exclude {
+		if ok, _ := doublestar.Match(ex, ".logs/keep.log"); ok {
+			t.Fatalf("exclude %q would untrack the tracked .logs/keep.log", ex)
+		}
 	}
 }
