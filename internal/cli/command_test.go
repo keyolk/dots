@@ -1495,3 +1495,177 @@ func newEnvClonedFrom(t *testing.T, origin string) *env {
 	}
 	return &env{t: t, root: root, work: work, manifest: manifest}
 }
+
+// seedOrigin builds a bare origin with one commit and returns its path plus a
+// scratch clone to push further commits from, standing in for another machine.
+func seedOrigin(t *testing.T) (origin, seed string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	origin = filepath.Join(root, "origin.git")
+	if out, err := exec.Command("git", "init", "--bare", "-q", "-b", "main", origin).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	seed = filepath.Join(root, "seed")
+	mustGit(t, "", "clone", "-q", origin, seed)
+	if err := os.WriteFile(filepath.Join(seed, ".testrc"), []byte("v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, seed, "config", "user.email", "t@e.com")
+	mustGit(t, seed, "config", "user.name", "t")
+	mustGit(t, seed, "add", "-A")
+	mustGit(t, seed, "commit", "-q", "-m", "seed")
+	mustGit(t, seed, "push", "-q", "origin", "main")
+	return origin, seed
+}
+
+// originHead reads what the remote actually holds, which is the only evidence
+// that a push happened: the local branch moves whether it lands or not.
+func originHead(t *testing.T, origin string) string {
+	t.Helper()
+	cmd := exec.Command("git", "--git-dir="+origin, "rev-parse", "main")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("rev-parse on origin: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestPushSendsACommitTheRemoteLacks is the half of the cycle pull does not
+// cover, and the one save --push misses: the commit already existed.
+func TestPushSendsACommitTheRemoteLacks(t *testing.T) {
+	origin, _ := seedOrigin(t)
+	e := newEnvClonedFrom(t, origin)
+
+	before := originHead(t, origin)
+	if err := os.WriteFile(filepath.Join(e.work, ".testrc"), []byte("local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := e.run("save", "-M", "local change"); err != nil {
+		t.Fatalf("save: %v\n%s", err, out)
+	}
+
+	out, err := e.run("push")
+	if err != nil {
+		t.Fatalf("push: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "pushed") {
+		t.Fatalf("push did not report what it sent:\n%s", out)
+	}
+	if originHead(t, origin) == before {
+		t.Fatal("origin did not move; nothing was actually pushed")
+	}
+}
+
+func TestPushWithNothingToSendSaysSo(t *testing.T) {
+	origin, _ := seedOrigin(t)
+	e := newEnvClonedFrom(t, origin)
+
+	out, err := e.run("push")
+	if err != nil {
+		t.Fatalf("push: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "nothing to push") {
+		t.Fatalf("push on an unchanged store said:\n%s", out)
+	}
+}
+
+// TestPushWhenBehindPointsAtPull covers the case git reports as a
+// non-fast-forward rejection: the fix is a pull, and saying so beats relaying
+// git's wording.
+func TestPushWhenBehindPointsAtPull(t *testing.T) {
+	origin, seed := seedOrigin(t)
+	e := newEnvClonedFrom(t, origin)
+
+	if err := os.WriteFile(filepath.Join(seed, ".testrc"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, seed, "commit", "-q", "-am", "v2")
+	mustGit(t, seed, "push", "-q", "origin", "main")
+
+	out, err := e.run("push")
+	if err != nil {
+		t.Fatalf("push: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "nothing to push") || !strings.Contains(out, "dots pull") {
+		t.Fatalf("push did not report the store is behind:\n%s", out)
+	}
+}
+
+// TestPushOnADivergedStoreRefuses: a store two machines both committed to is a
+// real divergence, and merging it blind is what pull already refuses to do.
+func TestPushOnADivergedStoreRefuses(t *testing.T) {
+	origin, seed := seedOrigin(t)
+	e := newEnvClonedFrom(t, origin)
+
+	if err := os.WriteFile(filepath.Join(seed, ".testrc"), []byte("theirs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, seed, "commit", "-q", "-am", "theirs")
+	mustGit(t, seed, "push", "-q", "origin", "main")
+	before := originHead(t, origin)
+
+	if err := os.WriteFile(filepath.Join(e.work, ".testrc"), []byte("mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := e.run("save", "-M", "mine"); err != nil {
+		t.Fatalf("save: %v\n%s", err, out)
+	}
+
+	out, err := e.run("push")
+	if err == nil {
+		t.Fatalf("push went ahead on a diverged store:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "diverged") {
+		t.Fatalf("the error did not name the divergence: %v", err)
+	}
+	if originHead(t, origin) != before {
+		t.Fatal("origin moved despite the refusal")
+	}
+}
+
+// TestPushDryRunSendsNothing: -n has to be inspectable before a push that
+// reaches the network.
+func TestPushDryRunSendsNothing(t *testing.T) {
+	origin, _ := seedOrigin(t)
+	e := newEnvClonedFrom(t, origin)
+
+	before := originHead(t, origin)
+	if err := os.WriteFile(filepath.Join(e.work, ".testrc"), []byte("local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := e.run("save", "-M", "local change"); err != nil {
+		t.Fatalf("save: %v\n%s", err, out)
+	}
+
+	out, err := e.run("push", "-n")
+	if err != nil {
+		t.Fatalf("push -n: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "would push") {
+		t.Fatalf("push -n did not say what it would do:\n%s", out)
+	}
+	if originHead(t, origin) != before {
+		t.Fatal("push -n pushed")
+	}
+}
+
+// TestPushReportsUncommittedDeclaredFiles: a push that leaves new files behind
+// looks exactly like one that carried them, so it has to say.
+func TestPushReportsUncommittedDeclaredFiles(t *testing.T) {
+	origin, _ := seedOrigin(t)
+	e := newEnvClonedFrom(t, origin)
+
+	if err := os.WriteFile(filepath.Join(e.work, ".testrc"), []byte("uncommitted\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := e.run("push")
+	if err != nil {
+		t.Fatalf("push: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "not committed") {
+		t.Fatalf("push stayed quiet about uncommitted work:\n%s", out)
+	}
+}

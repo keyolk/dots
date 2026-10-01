@@ -7,6 +7,8 @@ use.
 dots status                      # what differs from the manifest
 dots add                         # commit declared files the store never saw
 dots save -M "message"           # stage and commit everything declared
+dots push                        # send this machine's commits out
+dots pull                        # bring in what another machine pushed
 dots prune                       # untrack what the manifest no longer declares
 dots apply                       # render templates, substituting secrets
 dots secret set <name>           # store a secret in the age vault
@@ -128,6 +130,33 @@ was never going to match. A gitlink is a commit pointer, so tpm, fisherman and
 vim-plug would otherwise read as undeclared; and a `.xprofile` declared by a
 linux-only group is not a leftover on a Mac — untracking it there would delete
 the other machine's config.
+
+## Syncing between machines
+
+`save` commits, `push` sends, `pull` receives. They are three commands rather
+than two because a commit that never left the machine protects nothing, and
+`save --push` only pushes when it just made a commit — the commits already
+sitting on the branch, the ones `doctor` warns about, have no way out through
+`save`.
+
+```
+dots save -M "message" --push    # commit and send, the common case
+dots push                        # send what is already committed
+dots push -n                     # list those commits without sending
+dots pull                        # fetch and apply what another machine sent
+```
+
+Both halves fetch first and refuse the ambiguous case rather than guessing.
+`pull` fast-forwards or stops; `push` reports what git would have rejected, in
+the terms that say what to do about it:
+
+```
+nothing to push; 3 commit(s) to pull - run `dots pull`
+local and origin/main have diverged (1 ahead, 2 behind); `dots pull` first
+```
+
+`push` also names declared files that were never committed, because a push
+that leaves them behind looks exactly like one that carried them.
 
 ## Secrets
 

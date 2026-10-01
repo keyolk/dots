@@ -85,13 +85,13 @@ func checkStores(m *manifest.Manifest) []check {
 	}
 	out = append(out, check{"store", "ok", fmt.Sprintf("%d tracked path(s)", len(files)), ""})
 
-	// A commit that never left the machine protects nothing. --push on save is
+	// A commit that never left the machine protects nothing. Pushing is
 	// opt-in, so without this the gap is silent: the store looks healthy while
 	// every other machine is behind.
 	if n, _ := r.Unpushed(); n > 0 {
 		out = append(out, check{"remote", "warn",
 			fmt.Sprintf("%d commit(s) not pushed", n),
-			"dots save --push, or: config push"})
+			"dots push"})
 	} else if n == 0 {
 		// Name the remote rather than saying "origin": which repository this
 		// machine is pointed at is the thing worth confirming at a glance.
