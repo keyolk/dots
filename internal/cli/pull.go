@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -52,16 +51,16 @@ since the alternative is losing them. --force discards them instead.`,
 					}
 				}
 				if len(dirty) > 0 {
-					fmt.Fprintf(os.Stderr, "%s\n",
+					fmt.Fprintf(ui.Stderr, "%s\n",
 						ui.Warn.Render(fmt.Sprintf(
 							"%d tracked file(s) have uncommitted changes:", len(dirty))))
 					for i, p := range dirty {
 						if i == 10 {
-							fmt.Fprintln(os.Stderr,
+							fmt.Fprintln(ui.Stderr,
 								ui.Muted.Render(fmt.Sprintf("  … %d more", len(dirty)-10)))
 							break
 						}
-						fmt.Fprintf(os.Stderr, "  %s %s\n", ui.StateModified.Render("M"), p)
+						fmt.Fprintf(ui.Stderr, "  %s %s\n", ui.StateModified.Render("M"), p)
 					}
 					return fmt.Errorf("commit them with `dots save`, or pull --force to discard")
 				}
