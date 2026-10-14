@@ -120,3 +120,20 @@ func TestDoctorWarnsWhenASourceCannotBeListed(t *testing.T) {
 		t.Fatalf("doctor did not name the unlistable source:\n%s", out)
 	}
 }
+
+// TestDoctorWarnsWhenTheStoreHasNoRemote: with no origin, Unpushed reports
+// "cannot tell" and doctor printed no remote row at all, so a store that
+// backs up nothing looked as healthy as one that is up to date.
+func TestDoctorWarnsWhenTheStoreHasNoRemote(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	e := newEnv(t, baseManifest)
+	e.write(".bashrc", "x\n")
+	if out, err := e.run("add", "--commit"); err != nil {
+		t.Fatalf("add: %v\n%s", err, out)
+	}
+	out := captureDoctor(t, e.manifest)
+	row := lineWith(t, out, "remote")
+	if !strings.Contains(row, "warn") || !strings.Contains(row, "no origin") {
+		t.Fatalf("doctor did not warn about the missing remote:\n%s", out)
+	}
+}

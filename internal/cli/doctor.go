@@ -89,18 +89,32 @@ func checkStores(m *manifest.Manifest) []check {
 	// A commit that never left the machine protects nothing. Pushing is
 	// opt-in, so without this the gap is silent: the store looks healthy while
 	// every other machine is behind.
-	if n, _ := r.Unpushed(); n > 0 {
+	//
+	// Unpushed never returns an error; -1 is its "cannot tell". That case
+	// used to print no remote row at all, so a store with nowhere to push
+	// read as healthy -- the opposite of what it is.
+	url, urlErr := r.Run("remote", "get-url", "origin")
+	switch n, _ := r.Unpushed(); {
+	case n > 0:
 		out = append(out, check{"remote", "warn",
 			fmt.Sprintf("%d commit(s) not pushed", n),
 			"dots push"})
-	} else if n == 0 {
+	case n == 0:
 		// Name the remote rather than saying "origin": which repository this
 		// machine is pointed at is the thing worth confirming at a glance.
 		remote := "origin"
-		if url, err := r.Run("remote", "get-url", "origin"); err == nil {
+		if urlErr == nil {
 			remote = strings.TrimSpace(url)
 		}
 		out = append(out, check{"remote", "ok", "up to date with " + remote, ""})
+	case urlErr != nil:
+		out = append(out, check{"remote", "warn",
+			"no origin configured; commits exist only on this machine",
+			fmt.Sprintf("git --git-dir=%s remote add origin <url>, then dots push", m.Store.Config)})
+	default:
+		out = append(out, check{"remote", "warn",
+			"cannot compare with origin: never fetched, or no commits yet",
+			"dots pull"})
 	}
 
 	// A manifest carried over from the two-store layout still names a second
