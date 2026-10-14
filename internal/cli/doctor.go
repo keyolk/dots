@@ -174,13 +174,25 @@ func checkUnclaimed(m *manifest.Manifest) check {
 }
 
 func checkPackages(m *manifest.Manifest) check {
-	var missing, unavailable int
+	var missing int
+	var unlisted []string
 	for _, d := range pkgmgr.Reconcile(m) {
+		if d.Err != nil {
+			unlisted = append(unlisted, d.Source)
+			continue
+		}
 		if !d.Available {
-			unavailable++
 			continue
 		}
 		missing += len(d.Missing)
+	}
+	// A source whose tool is installed but cannot be listed was counted as
+	// neither missing nor installed, so doctor said "all declared packages
+	// installed" while knowing nothing about that source.
+	if len(unlisted) > 0 {
+		return check{"packages", "warn",
+			fmt.Sprintf("could not list %s", strings.Join(unlisted, ", ")),
+			"dots pkg diff"}
 	}
 	if missing == 0 {
 		return check{"packages", "ok", "all declared packages installed", ""}

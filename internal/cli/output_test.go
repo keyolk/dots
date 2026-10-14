@@ -68,3 +68,55 @@ func TestTriageAlignsCJKPatterns(t *testing.T) {
 		t.Fatalf("reason column at cell %d for ASCII, %d for CJK:\n%s", a, b, out)
 	}
 }
+
+// baseStore is baseManifest without its groups, for tests that declare their
+// own.
+const baseStore = `
+[store]
+config    = "{{root}}/config.repo"
+work_tree = "{{work}}"
+
+[secrets]
+identity = "{{root}}/identity.age"
+vault    = "{{root}}/vault.age"
+`
+
+const brokenSourceManifest = `
+[[dotfiles]]
+name    = "shell"
+include = [".bashrc"]
+
+[packages.sh]
+list     = "echo 'database locked' >&2; exit 1"
+packages = ["a"]
+`
+
+// TestPkgDiffWarnsWhenASourceCannotBeListed: an installed tool whose list
+// command fails is a failure, not the muted "unavailable on this machine" an
+// absent tool gets, and the run has to exit non-zero.
+func TestPkgDiffWarnsWhenASourceCannotBeListed(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	e := newEnv(t, baseStore+brokenSourceManifest)
+	out, err := e.run("pkg", "diff")
+	if err == nil {
+		t.Fatalf("pkg diff exited 0 with an unlistable source:\n%s", out)
+	}
+	if !strings.Contains(out, "could not list") || !strings.Contains(out, "database locked") {
+		t.Fatalf("pkg diff hid why the source failed:\n%s", out)
+	}
+	if strings.Contains(out, "unavailable on this machine") {
+		t.Fatalf("a failing tool was reported as absent:\n%s", out)
+	}
+}
+
+func TestDoctorWarnsWhenASourceCannotBeListed(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	e := newEnv(t, baseStore+brokenSourceManifest)
+	out := captureDoctor(t, e.manifest)
+	if strings.Contains(out, "all declared packages installed") {
+		t.Fatalf("doctor called an unlistable source healthy:\n%s", out)
+	}
+	if !strings.Contains(lineWith(t, out, "packages"), "could not list sh") {
+		t.Fatalf("doctor did not name the unlistable source:\n%s", out)
+	}
+}
