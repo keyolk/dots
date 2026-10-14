@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -135,5 +137,33 @@ func TestDoctorWarnsWhenTheStoreHasNoRemote(t *testing.T) {
 	row := lineWith(t, out, "remote")
 	if !strings.Contains(row, "warn") || !strings.Contains(row, "no origin") {
 		t.Fatalf("doctor did not warn about the missing remote:\n%s", out)
+	}
+}
+
+// TestConfigSaysWhenMatchCountsFailed: a scan error was read as empty
+// counts, so every group showed "0 matched" in warning colour -- blaming the
+// globs for a broken store.
+func TestConfigSaysWhenMatchCountsFailed(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	e := newEnv(t, baseManifest)
+	// A directory that exists but is not a repository: Exists() passes and
+	// every git call fails, which is what a corrupted store looks like.
+	store := filepath.Join(e.root, "config.repo")
+	if err := os.RemoveAll(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(store, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := e.run("config")
+	if err != nil {
+		t.Fatalf("config: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "match counts unavailable") {
+		t.Fatalf("config hid the scan failure:\n%s", out)
+	}
+	if strings.Contains(lineWith(t, out, "shell"), "0 matched") {
+		t.Fatalf("config reported 0 matches it never counted:\n%s", out)
 	}
 }

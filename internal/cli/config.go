@@ -42,6 +42,9 @@ type configView struct {
 	Secrets  secretsView  `json:"secrets"`
 	Groups   []groupView  `json:"groups"`
 	Packages []packageRow `json:"packages"`
+	// ScanError is set when the match counts could not be computed, so a
+	// reader of the JSON can tell "0 matched" from "not counted".
+	ScanError string `json:"scan_error,omitempty"`
 }
 
 type storeView struct {
@@ -136,7 +139,10 @@ func buildConfigView(m *manifest.Manifest) configView {
 
 	// Group rows report how many paths each one currently matches, which is
 	// what turns a list of globs into something you can sanity-check.
-	counts := groupMatchCounts(m)
+	counts, err := groupMatchCounts(m)
+	if err != nil {
+		v.ScanError = err.Error()
+	}
 	for _, g := range m.Dotfiles {
 		row := groupView{
 			Name:      g.Name,
@@ -174,18 +180,22 @@ func buildConfigView(m *manifest.Manifest) configView {
 // groupMatchCounts asks the scanner how many paths each group claims. A group
 // matching zero paths is usually a typo in a glob, and the count is the
 // cheapest way to see it.
-func groupMatchCounts(m *manifest.Manifest) map[string]int {
+//
+// A scan failure is returned rather than read as empty counts: every group
+// would then show "0 matched" in warning colour, blaming the globs for what
+// is really a broken store.
+func groupMatchCounts(m *manifest.Manifest) (map[string]int, error) {
 	counts := map[string]int{}
 	entries, err := dotfile.NewScanner(m, hostname()).Scan()
 	if err != nil {
-		return counts
+		return counts, err
 	}
 	for _, e := range entries {
 		if e.Group != "" {
 			counts[e.Group]++
 		}
 	}
-	return counts
+	return counts, nil
 }
 
 func printConfigView(v configView) {
@@ -234,6 +244,9 @@ func printConfigView(v configView) {
 	fmt.Println()
 
 	fmt.Println(ui.Heading.Render("groups"))
+	if v.ScanError != "" {
+		fmt.Printf("  %s\n", ui.Warn.Render("match counts unavailable: "+v.ScanError))
+	}
 	for _, g := range v.Groups {
 		var flags []string
 		if g.Secret {
@@ -255,7 +268,10 @@ func printConfigView(v configView) {
 		matched := fmt.Sprintf("%4d matched", g.Matched)
 		// Zero matches on an active group means a glob is not finding what it
 		// was written for -- worth seeing without reading the manifest.
-		if g.Matched == 0 && g.OS == "" && g.Host == "" {
+		switch {
+		case v.ScanError != "":
+			matched = ui.Muted.Render(fmt.Sprintf("%4s matched", "?"))
+		case g.Matched == 0 && g.OS == "" && g.Host == "":
 			matched = ui.Warn.Render(matched)
 		}
 		fmt.Printf("  %s %s  %s %s\n",
