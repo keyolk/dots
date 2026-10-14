@@ -114,13 +114,14 @@ func (m triModel) offered(action string) bool {
 	return true
 }
 
-// keyName is the first key bound to action, as the theme displays it, so the
-// band and dialogs name the key the user actually rebound.
-func (m triModel) keyName(action string) string {
-	for _, b := range m.km.Bindings() {
-		if b.Action == action && len(b.Keys) > 0 {
-			return m.th.KeyNames().Name(b.Keys[0])
-		}
+// keyName names the key that runs action in the stack, as the theme displays
+// it, so the band and dialogs name the key the user actually rebound. It
+// asks with no Enabled gate: the band names the decision keys even while a
+// write is in flight, when they are briefly disabled.
+func (m triModel) keyName(active []keys.Ctx, action string) string {
+	k, ok := m.km.KeyFor(active, action, keys.Opts{})
+	if !ok {
+		return "?"
 	}
-	return "?"
+	return m.th.KeyNames().Name(k)
 }

@@ -61,7 +61,8 @@ func (m triModel) band() string {
 		return ""
 	}
 	return m.th.Warn.Render(render.Truncate(fmt.Sprintf("%d pattern(s) need a decision: %s declare · %s ignore · %s skip",
-		n, m.keyName("row.declare"), m.keyName("row.ignore"), m.keyName("row.skip")), m.w))
+		n, m.keyName(triageStacks[0], "row.declare"), m.keyName(triageStacks[0], "row.ignore"),
+		m.keyName(triageStacks[0], "row.skip")), m.w))
 }
 
 func (m triModel) toastView() string { return toast.View(m.toasts, m.w, m.th.ToastStyles()) }
@@ -123,8 +124,9 @@ func (m triModel) View() string {
 	switch m.mode {
 	case modeHelp:
 		boxW, boxH := m.helpBox()
-		lines, _ := keys.RenderHelp(m.helpSections(), boxW-4, boxH-2, m.helpOff, m.th.HelpStyle())
-		box = m.th.BoxFocus.Render(strings.Join(lines, "\n"))
+		cw, ch := render.BoxContent(boxW, boxH, m.th.BoxFocus)
+		lines, _ := keys.RenderHelp(m.helpSections(), cw, ch, m.helpOff, m.th.HelpStyle())
+		box = render.Box("", strings.Join(lines, "\n"), boxW, boxH, m.th.BoxFocus)
 	case modeGroup:
 		box = m.groupDialog()
 	case modeConfirm:
@@ -274,7 +276,16 @@ func (m triModel) inputLine() string {
 	return m.th.Key.Render(prompt) + m.input.View(max(m.w-render.Width(prompt), 1), true, input.Style{Text: m.th.Text})
 }
 
-func (m triModel) helpBox() (int, int) { return min(64, m.w-4), min(22, m.h-2) }
+// helpBox is the help box's outer size: at most 64×22 and the frame less a
+// margin, and no taller than the help needs, so a short table is a short box.
+func (m triModel) helpBox() (int, int) {
+	w, h := min(64, m.w-4), min(22, m.h-2)
+	cw, ch := render.BoxContent(w, h, m.th.BoxFocus)
+	if need := keys.HelpLineCount(m.helpSections(), cw); need < ch {
+		h -= ch - need
+	}
+	return w, h
+}
 
 // helpSections documents the list first, then every dialog's keys: Help lists
 // each action once however many stacks reach it.
@@ -289,7 +300,8 @@ func (m triModel) clampHelp() int {
 		return m.helpOff
 	}
 	boxW, boxH := m.helpBox()
-	_, off := keys.RenderHelp(m.helpSections(), boxW-4, boxH-2, m.helpOff, keys.HelpStyle{})
+	cw, ch := render.BoxContent(boxW, boxH, m.th.BoxFocus)
+	_, off := keys.RenderHelp(m.helpSections(), cw, ch, m.helpOff, keys.HelpStyle{})
 	return off
 }
 
@@ -339,7 +351,8 @@ func (m triModel) confirmDialog() string {
 		fmt.Sprintf("%s include  %s exclude",
 			m.verdictStyle(vDeclare).Render(fmt.Sprint(inc)), m.verdictStyle(vIgnore).Render(fmt.Sprint(exc))),
 		"",
-		m.th.Key.Render(m.keyName("confirm.yes")) + " write   " + m.th.Key.Render(m.keyName("confirm.no")) + " cancel",
+		m.th.Key.Render(m.keyName(triageStacks[3], "confirm.yes")) + " write   " +
+			m.th.Key.Render(m.keyName(triageStacks[3], "confirm.no")) + " cancel",
 	}
 	return m.th.BoxFocus.Render(strings.Join(lines, "\n"))
 }

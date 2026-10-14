@@ -474,3 +474,43 @@ func TestTriageInteractiveNeedsATerminal(t *testing.T) {
 		t.Fatal("-i with --apply was accepted")
 	}
 }
+
+// TestTriageTUINamesTheReboundKey: the band and the confirm dialog name the
+// key from the table as overridden, not the default.
+func TestTriageTUINamesTheReboundKey(t *testing.T) {
+	e := hooksEnv(t)
+	m := startTUI(t, e, 140, 30)
+	km, err := triageKeymap().Override(map[string][]string{"row.declare": {"x"}, "confirm.yes": {"w"}}, triageStacks...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.km = km
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "need a decision: x declare") {
+		t.Fatalf("the band does not name the rebound key:\n%s", v)
+	}
+	m, _ = press(t, m, "a")
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "w write") {
+		t.Fatalf("the confirm dialog does not name the rebound key:\n%s", v)
+	}
+}
+
+// TestTriageTUIFilterTakesHangul: the field edits by rune, so backspace
+// removes a whole syllable, and a pasted newline does not break the line.
+func TestTriageTUIFilterTakesHangul(t *testing.T) {
+	e := hooksEnv(t)
+	e.write(".claude/hooks/메모", "한글")
+	m := startTUI(t, e, 100, 30)
+	m, _ = press(t, m, "/")
+	m = send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("메모x")})
+	m, _ = press(t, m, "backspace")
+	if m.filter != "메모" {
+		t.Fatalf("filter = %q, want 메모", m.filter)
+	}
+	if got := m.list.Len(); got != 1 {
+		t.Fatalf("filter 메모 keeps %d row(s), want 1", got)
+	}
+	m = send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("\nz"), Paste: true})
+	if strings.Contains(m.filter, "\n") {
+		t.Fatalf("a pasted newline reached the filter: %q", m.filter)
+	}
+}
