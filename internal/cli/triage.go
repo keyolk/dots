@@ -21,6 +21,7 @@ const (
 	vIgnore  verdict = iota // add an exclude: the file is derived or disposable
 	vDeclare                // add an include: the file is authored content
 	vUnsure                 // no rule matched; say so rather than guess
+	vSkip                   // left alone on purpose; only triage -i sets it
 )
 
 // proposal is one line of the report: a pattern, a verdict, and the orphans it
@@ -37,7 +38,7 @@ type proposal struct {
 }
 
 func newTriageCmd() *cobra.Command {
-	var apply, showPaths bool
+	var apply, showPaths, interactive bool
 
 	cmd := &cobra.Command{
 		Use:   "triage",
@@ -58,11 +59,21 @@ Each orphan is classified by shape:
 --apply writes the ignore and declare lines into the manifest, as globs, and
 leaves the unsure ones alone. Nothing is deleted and no file is touched: the
 manifest gains lines, which dots status then acts on. An exclude that would
-also cover something already tracked is refused rather than written.`,
+also cover something already tracked is refused rather than written.
+
+-i opens the same proposals as a screen: change a verdict, the group or the
+pattern row by row, then write them with the same edits --apply makes.
+It needs a terminal on stdout.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if interactive && apply {
+				return fmt.Errorf("-i and --apply are two ways to write; pick one")
+			}
 			m, err := load()
 			if err != nil {
 				return err
+			}
+			if interactive {
+				return runTriageTUI(m.Path, hostname())
 			}
 			sc := dotfile.NewScanner(m, hostname())
 			orphans, err := sc.Orphans()
@@ -103,23 +114,13 @@ also cover something already tracked is refused rather than written.`,
 					unsure = append(unsure, p)
 					continue
 				}
-				// An exclude that also covers a tracked file would untrack it
-				// on the next prune. The bulk pattern is built from what the
-				// orphan names share precisely so it cannot reach a tracked
-				// neighbour -- .spin/** would have swallowed .spin/config --
-				// and this check is what proves it for every pattern.
-				if p.verdict == vIgnore {
-					if hit := covers(p.pattern, declared); hit != "" {
-						fmt.Printf("%s   %s\n", ui.Refused.Render("         refused"),
-							ui.Muted.Render("would also exclude "+hit))
-						continue
-					}
+				e, hit := planEdit(p, declared)
+				if hit != "" {
+					fmt.Printf("%s   %s\n", ui.Refused.Render("         refused"),
+						ui.Muted.Render("would also exclude "+hit))
+					continue
 				}
-				key := "exclude"
-				if p.verdict == vDeclare {
-					key = "include"
-				}
-				edits = append(edits, manifest.Edit{Group: p.group, Key: key, Pattern: p.pattern})
+				edits = append(edits, e)
 			}
 
 			n := 0
@@ -154,7 +155,30 @@ also cover something already tracked is refused rather than written.`,
 
 	cmd.Flags().BoolVar(&apply, "apply", false, "write the classified patterns into the manifest")
 	cmd.Flags().BoolVar(&showPaths, "paths", false, "list the files behind each pattern")
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "decide each pattern on a screen, then write")
 	return cmd
+}
+
+// planEdit turns a decided proposal into the manifest edit that records it.
+// It is the one place both `triage --apply` and `triage -i` build edits, so the
+// interactive screen cannot write anything the flag would have refused.
+//
+// An exclude that also covers a tracked file would untrack it on the next
+// prune. The bulk pattern is built from what the orphan names share precisely
+// so it cannot reach a tracked neighbour -- .spin/** would have swallowed
+// .spin/config -- and this check is what proves it for every pattern. A
+// refused proposal returns the tracked path it would have reached.
+func planEdit(p proposal, declared []string) (manifest.Edit, string) {
+	if p.verdict == vIgnore {
+		if hit := covers(p.pattern, declared); hit != "" {
+			return manifest.Edit{}, hit
+		}
+	}
+	key := "exclude"
+	if p.verdict == vDeclare {
+		key = "include"
+	}
+	return manifest.Edit{Group: p.group, Key: key, Pattern: p.pattern}, ""
 }
 
 func countPaths(ps []proposal) int {
