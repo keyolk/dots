@@ -137,7 +137,7 @@ group in the manifest.`,
 				}
 				if len(paths) == 0 {
 					fmt.Println("nothing to add")
-					return nil
+					return blockedErr(blocked)
 				}
 
 				if err := repo.Add(paths...); err != nil {
@@ -158,14 +158,13 @@ group in the manifest.`,
 				}
 			}
 
-			if blocked > 0 {
-				fmt.Fprintln(os.Stderr, ui.Refused.Render(fmt.Sprintf(
-					"\n%d file(s) refused for credential content", blocked)))
-			}
 			if !force {
 				fmt.Println("\nstaged only - run `dots save` to commit")
 			}
-			return nil
+			// The clean files stay staged, but a refusal is still a failure:
+			// exiting 0 told a script the whole batch went in. save already
+			// returns the same error for the same case.
+			return blockedErr(blocked)
 		},
 	}
 

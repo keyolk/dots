@@ -167,3 +167,25 @@ func TestConfigSaysWhenMatchCountsFailed(t *testing.T) {
 		t.Fatalf("config reported 0 matches it never counted:\n%s", out)
 	}
 }
+
+// TestAddExitsNonZeroWhenAFileIsRefused: add staged the clean files and
+// exited 0, so a script could not tell that a credential-bearing file was
+// left out. save already fails in the same case.
+func TestAddExitsNonZeroWhenAFileIsRefused(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	e := newEnv(t, baseManifest)
+	token := "gh" + "p_" + strings.Repeat("A1b2C3d4", 5)
+	e.write(".bashrc", "export TOKEN="+token+"\n")
+	e.write(".config/fish/ok.fish", "set -x A 1\n")
+
+	out, err := e.run("add")
+	if err == nil {
+		t.Fatalf("add exited 0 after refusing a file:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("err = %v, want the refusal count", err)
+	}
+	if !strings.Contains(out, "ok.fish") {
+		t.Fatalf("the clean file was not staged:\n%s", out)
+	}
+}
