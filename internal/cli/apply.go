@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -65,7 +64,7 @@ never tracked.`,
 					continue
 				}
 				if err := r.RenderFile(src, dst); err != nil {
-					fmt.Fprintf(os.Stderr, "  %s %s: %v\n", ui.Fail.Render("✗"), e.Path, err)
+					fmt.Fprintf(ui.Stderr, "  %s %s: %v\n", ui.Fail.Render("✗"), e.Path, err)
 					failed++
 					continue
 				}

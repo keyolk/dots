@@ -82,7 +82,7 @@ group in the manifest.`,
 				// only ever refuse the files that most need tracking.
 				if e.Store != "secret" && !asTmpl {
 					if hit := scanSecrets(abs); hit != "" {
-						fmt.Fprintf(os.Stderr, "%s %s: %s\n",
+						fmt.Fprintf(ui.Stderr, "%s %s: %s\n",
 							ui.Refused.Render("refused"), e.Path, ui.Muted.Render(hit))
 						blocked++
 						continue
@@ -123,21 +123,21 @@ group in the manifest.`,
 					}
 					paths = kept
 
-					fmt.Fprintf(os.Stderr, "\n%s\n", ui.Warn.Render(fmt.Sprintf(
+					fmt.Fprintf(ui.Stderr, "\n%s\n", ui.Warn.Render(fmt.Sprintf(
 						"%d path(s) are declared in the manifest but excluded by a .gitignore:", len(ignored))))
 					for i, p := range ignored {
 						if i == 10 {
-							fmt.Fprintf(os.Stderr, "  … %d more\n", len(ignored)-10)
+							fmt.Fprintf(ui.Stderr, "  … %d more\n", len(ignored)-10)
 							break
 						}
-						fmt.Fprintf(os.Stderr, "  %s\n", p)
+						fmt.Fprintf(ui.Stderr, "  %s\n", p)
 					}
-					fmt.Fprintln(os.Stderr, ui.Fix.Render(
+					fmt.Fprintln(ui.Stderr, ui.Fix.Render(
 						"resolve the conflict: drop the ignore rule, or stop declaring the path"))
 				}
 				if len(paths) == 0 {
 					fmt.Println("nothing to add")
-					return nil
+					return blockedErr(blocked)
 				}
 
 				if err := repo.Add(paths...); err != nil {
@@ -158,14 +158,13 @@ group in the manifest.`,
 				}
 			}
 
-			if blocked > 0 {
-				fmt.Fprintln(os.Stderr, ui.Refused.Render(fmt.Sprintf(
-					"\n%d file(s) refused for credential content", blocked)))
-			}
 			if !force {
 				fmt.Println("\nstaged only - run `dots save` to commit")
 			}
-			return nil
+			// The clean files stay staged, but a refusal is still a failure:
+			// exiting 0 told a script the whole batch went in. save already
+			// returns the same error for the same case.
+			return blockedErr(blocked)
 		},
 	}
 

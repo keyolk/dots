@@ -142,6 +142,24 @@ func TestReconcileTreatsAnUnlistableSourceAsUnavailable(t *testing.T) {
 	}
 }
 
+// TestReconcileKeepsWhyAListingFailed: the failure used to be dropped, so a
+// broken brew printed as "unavailable on this machine" -- the same grey line
+// as apt on a Mac -- and doctor counted it as nothing to report.
+func TestReconcileKeepsWhyAListingFailed(t *testing.T) {
+	m := &manifest.Manifest{
+		Packages: map[string]*manifest.PkgList{
+			"sh": {List: "echo 'database locked' >&2; exit 1", Packages: []string{"a"}},
+		},
+	}
+	d := Reconcile(m)[0]
+	if d.Err == nil {
+		t.Fatal("a failed listing left no error")
+	}
+	if !strings.Contains(d.Err.Error(), "database locked") {
+		t.Fatalf("Err = %q, want the tool's own message", d.Err)
+	}
+}
+
 func TestUnavailableSourceIsNotReportedAsAllMissing(t *testing.T) {
 	// The distinction matters: "apt is not on this Mac" must not become
 	// "every apt package is missing", which sync would try to install.

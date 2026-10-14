@@ -45,17 +45,26 @@ func newPkgDiffCmd() *cobra.Command {
 				return nil
 			}
 
-			var totalMissing, totalExtra int
+			var totalMissing, totalExtra, unlisted int
 			for _, d := range diffs {
+				if d.Err != nil {
+					// The tool is here and failed: a warning, not the muted
+					// aside an absent tool gets, or a broken brew reads as
+					// "nothing to see".
+					fmt.Printf("%s %s\n", ui.Pad(ui.Heading, d.Source, 8),
+						ui.Warn.Render("could not list: "+d.Err.Error()))
+					unlisted++
+					continue
+				}
 				if !d.Available {
-					fmt.Printf("%s %s\n", ui.Heading.Width(8).Render(d.Source),
+					fmt.Printf("%s %s\n", ui.Pad(ui.Heading, d.Source, 8),
 						ui.Muted.Render("unavailable on this machine"))
 					continue
 				}
 				totalMissing += len(d.Missing)
 				totalExtra += len(d.Extra)
 
-				fmt.Printf("%s %s", ui.Heading.Width(8).Render(d.Source),
+				fmt.Printf("%s %s", ui.Pad(ui.Heading, d.Source, 8),
 					ui.OK.Render(fmt.Sprintf("%d managed", d.Managed)))
 				if len(d.Missing) > 0 {
 					fmt.Printf(", %s", ui.StateMissing.Render(fmt.Sprintf("%d missing", len(d.Missing))))
@@ -81,6 +90,9 @@ func newPkgDiffCmd() *cobra.Command {
 			}
 			if totalExtra > 0 && !showExtra {
 				fmt.Printf("%d package(s) installed but undeclared - see `dots pkg diff --extra`, adopt with `dots pkg adopt`\n", totalExtra)
+			}
+			if unlisted > 0 {
+				return fmt.Errorf("%d source(s) could not be listed", unlisted)
 			}
 			return nil
 		},
@@ -214,7 +226,7 @@ reproduces it instead of leaving a file whose origin nobody remembers.`,
 						mark = ui.Fail.Width(8).Render("MISSING")
 						missing++
 					}
-					fmt.Printf("  %s %-20s %s\n", mark, s.Name, ui.Muted.Render(s.Version))
+					fmt.Printf("  %s %s %s\n", mark, ui.Pad(ui.Path, s.Name, 20), ui.Muted.Render(s.Version))
 					if !s.Present && s.Install != "" {
 						fmt.Println(ui.Fix.Render("           install: " + s.Install))
 					}

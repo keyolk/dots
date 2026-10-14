@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -56,7 +55,7 @@ exactly like one that carried them.`,
 			// holding uncommitted work is the misleading case, not the
 			// informative one.
 			if n := uncommitted(sc); n > 0 {
-				fmt.Fprintf(os.Stderr, "%s %s\n",
+				fmt.Fprintf(ui.Stderr, "%s %s\n",
 					ui.Warn.Render(fmt.Sprintf("%d declared file(s) not committed", n)),
 					ui.Muted.Render("- `dots save` to include them"))
 			}

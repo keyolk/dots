@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -54,7 +53,7 @@ add applies.`,
 				if e.Store != "secret" {
 					abs := filepath.Join(m.Store.WorkTree, e.Path)
 					if hit := scanSecrets(abs); hit != "" {
-						fmt.Fprintf(os.Stderr, "%s %s: %s\n",
+						fmt.Fprintf(ui.Stderr, "%s %s: %s\n",
 							ui.Refused.Render("refused"), e.Path, ui.Muted.Render(hit))
 						blocked++
 						continue

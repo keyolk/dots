@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -52,16 +51,16 @@ since the alternative is losing them. --force discards them instead.`,
 					}
 				}
 				if len(dirty) > 0 {
-					fmt.Fprintf(os.Stderr, "%s\n",
+					fmt.Fprintf(ui.Stderr, "%s\n",
 						ui.Warn.Render(fmt.Sprintf(
 							"%d tracked file(s) have uncommitted changes:", len(dirty))))
 					for i, p := range dirty {
 						if i == 10 {
-							fmt.Fprintln(os.Stderr,
+							fmt.Fprintln(ui.Stderr,
 								ui.Muted.Render(fmt.Sprintf("  … %d more", len(dirty)-10)))
 							break
 						}
-						fmt.Fprintf(os.Stderr, "  %s %s\n", ui.StateModified.Render("M"), p)
+						fmt.Fprintf(ui.Stderr, "  %s %s\n", ui.StateModified.Render("M"), p)
 					}
 					return fmt.Errorf("commit them with `dots save`, or pull --force to discard")
 				}
@@ -115,9 +114,17 @@ since the alternative is losing them. --force discards them instead.`,
 				return fmt.Errorf("fetched, but the checkout failed: %w", err)
 			}
 
-			after, _ := repo.Run("rev-parse", "HEAD")
-			changed, _ := repo.Run("diff", "--name-only",
-				strings.TrimSpace(before), strings.TrimSpace(after))
+			// The pull itself has succeeded by here, so a failure to list
+			// what changed is reported, not returned. It used to be dropped,
+			// which printed "0 file(s)" and skipped the stale-template hint
+			// below -- a confident wrong answer instead of an unknown.
+			changed, err := repo.Run("diff", "--name-only", strings.TrimSpace(before), "HEAD")
+			if err != nil {
+				fmt.Printf("%s %s commit(s)\n", ui.OK.Render("pulled"), strings.TrimSpace(incoming))
+				fmt.Println(ui.Warn.Render("could not list the changed files: " + err.Error()))
+				fmt.Println(ui.Fix.Render("run `dots apply` if a template changed"))
+				return nil
+			}
 
 			var files []string
 			for _, l := range strings.Split(changed, "\n") {

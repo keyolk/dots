@@ -90,9 +90,9 @@ also cover something already tracked is refused rather than written.`,
 				case vUnsure:
 					label, style = "?", ui.StateModified
 				}
-				fmt.Printf("%s %5d  %-38s %s\n",
+				fmt.Printf("%s %5d  %s %s\n",
 					style.Width(8).Render(label), len(p.paths),
-					p.pattern, ui.Muted.Render(p.reason))
+					ui.Pad(ui.Path, p.pattern, 38), ui.Muted.Render(p.reason))
 				if showPaths {
 					for _, path := range p.paths {
 						fmt.Printf("%s\n", ui.Muted.Render("           "+path))

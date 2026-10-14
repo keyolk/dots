@@ -10,6 +10,7 @@ package pkgmgr
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -46,6 +47,11 @@ type Diff struct {
 	Extra []string
 	// Managed is the count of packages in both sets.
 	Managed int
+	// Err is why an installed tool could not be listed. Available is false
+	// then too, so nothing acts on an empty installed set; Err is what lets
+	// the output say "brew list failed" instead of "unavailable on this
+	// machine", which is a different fact with a different fix.
+	Err error
 }
 
 // builtins are the sources dots knows how to drive without configuration.
@@ -152,6 +158,14 @@ func (s Source) Installed() ([]string, error) {
 	}
 	out, err := exec.Command(s.listCmd[0], s.listCmd[1:]...).Output()
 	if err != nil {
+		// Output captures stderr on an ExitError; its first line is what the
+		// tool said went wrong, which "exit status 1" alone does not.
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			if msg, _, _ := strings.Cut(strings.TrimSpace(string(ee.Stderr)), "\n"); msg != "" {
+				return nil, fmt.Errorf("list %s: %s", s.Name, msg)
+			}
+		}
 		return nil, fmt.Errorf("list %s: %w", s.Name, err)
 	}
 	return s.parse(string(out)), nil
@@ -235,6 +249,7 @@ func Reconcile(m *manifest.Manifest) []Diff {
 			// than as "everything is missing", which would be a lie that
 			// `dots pkg sync` would then act on.
 			d.Available = false
+			d.Err = err
 			out = append(out, d)
 			continue
 		}
