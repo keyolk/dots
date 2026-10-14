@@ -10,6 +10,7 @@ dots save -M "message"           # stage and commit everything declared
 dots push                        # send this machine's commits out
 dots pull                        # bring in what another machine pushed
 dots triage                      # classify files no group accounts for
+dots triage -i                   # decide them one row at a time, then write
 dots prune                       # untrack what the manifest no longer declares
 dots apply                       # render templates, substituting secrets
 dots secret set <name>           # store a secret in the age vault
@@ -231,6 +232,13 @@ dots triage --apply
 `--apply` writes those lines into the manifest. `--paths` lists the files
 behind each pattern. Nothing is deleted and no file is moved: the manifest
 gains include and exclude lines, and `dots status` acts on them from then on.
+
+`-i` opens the same proposals as a screen: `d` declare, `i` ignore, `s` skip,
+`g` move a pattern to another group, `e` edit the pattern, `/` filter, `a`
+write (confirmed with `y`). The paths behind the selected pattern dock beside
+the list on a wide terminal, and `?` lists every key. It writes through the
+same edits as `--apply` and refuses the same excludes. Keys rebind in
+`~/.config/dots/keys.yaml` (`row.skip: [x]`).
 
 `dots doctor` reports the count, so the survey runs on a schedule you already
 keep rather than needing one of its own.
