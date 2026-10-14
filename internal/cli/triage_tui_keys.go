@@ -107,7 +107,7 @@ func (m triModel) enabled(action string) bool {
 func (m triModel) offered(action string) bool {
 	switch action {
 	case "list.down", "list.up":
-		return len(m.visible()) > 1
+		return m.list.Len() > 1
 	case "row.group":
 		return len(m.groups) > 1
 	}

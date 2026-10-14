@@ -12,8 +12,9 @@ import (
 	"golang.org/x/term"
 
 	"github.com/keyolk/tuikit/async"
+	"github.com/keyolk/tuikit/input"
 	"github.com/keyolk/tuikit/keys"
-	"github.com/keyolk/tuikit/render"
+	"github.com/keyolk/tuikit/list"
 	"github.com/keyolk/tuikit/theme"
 	"github.com/keyolk/tuikit/toast"
 
@@ -60,13 +61,13 @@ type triModel struct {
 	declared []string
 	orphans  []dotfile.Orphan
 
-	selID  string // the cursor (E2); the row index is derived
-	slot   int    // last derived index, kept when selID vanishes
-	offset int    // list scroll, kept here and not in View (E1)
+	// list is the visible rows with the cursor held by ID (E2) and the
+	// scroll offset kept here, not in View (E1).
+	list list.List[rowRef]
 
 	filter   string
 	mode     triMode
-	input    []rune
+	input    input.Field
 	inputFor string // "filter" or "edit"
 	before   string // the filter to restore when its input is cancelled
 	groupCur int
@@ -95,57 +96,35 @@ func (m triModel) scanCmd(gen uint64) tea.Cmd {
 	}
 }
 
-// visible is the rows the filter keeps, as indices into m.rows.
-func (m triModel) visible() []int {
-	q := strings.ToLower(m.filter)
-	var out []int
-	for i, r := range m.rows {
-		if q == "" || strings.Contains(strings.ToLower(r.pattern+" "+r.reason+" "+r.group), q) {
-			out = append(out, i)
-		}
-	}
-	return out
+// rowRef is one visible row on the cursor: the row's ID, which the list
+// keeps the selection by (E2), and its index into m.rows. The list holds
+// these and not the rows themselves, so a verdict or group changed in m.rows
+// is never shadowed by a stale copy inside the list.
+type rowRef struct {
+	id  string
+	idx int
 }
 
-// cursor is the selected row's position among the visible rows.
-func (m triModel) cursor(vis []int) int {
-	for i, ri := range vis {
-		if m.rows[ri].id == m.selID {
-			return i
+func (r rowRef) ID() string { return r.id }
+
+// refilter rebuilds the list from the rows the filter keeps. The list keeps
+// the cursor on the same ID if it is still there, else on the same slot.
+// Call it whenever the rows, the filter, or a field the filter reads change.
+func (m *triModel) refilter() {
+	q := strings.ToLower(m.filter)
+	var refs []rowRef
+	for i, r := range m.rows {
+		if q == "" || strings.Contains(strings.ToLower(r.pattern+" "+r.reason+" "+r.group), q) {
+			refs = append(refs, rowRef{id: r.id, idx: i})
 		}
 	}
-	return max(0, min(m.slot, len(vis)-1))
+	m.list = m.list.SetItems(refs).SetHeight(m.listRows())
 }
 
 // sel is the index into m.rows of the selected row.
 func (m triModel) sel() (int, bool) {
-	vis := m.visible()
-	if len(vis) == 0 {
-		return 0, false
-	}
-	return vis[m.cursor(vis)], true
-}
-
-// reselect re-derives the cursor after the rows or the filter changed: the
-// same ID if it is still there, else the same slot (E2).
-func (m *triModel) reselect() {
-	vis := m.visible()
-	if len(vis) == 0 {
-		return
-	}
-	m.slot = m.cursor(vis)
-	m.selID = m.rows[vis[m.slot]].id
-	_, _, m.offset = render.Window(len(vis), m.listRows(), m.slot, m.offset)
-}
-
-func (m *triModel) moveTo(pos int) {
-	vis := m.visible()
-	if len(vis) == 0 {
-		return
-	}
-	m.slot = max(0, min(pos, len(vis)-1))
-	m.selID = m.rows[vis[m.slot]].id
-	_, _, m.offset = render.Window(len(vis), m.listRows(), m.slot, m.offset)
+	r, ok := m.list.Selected()
+	return r.idx, ok
 }
 
 // install replaces the rows with a fresh survey. Decisions that did not reach
@@ -174,7 +153,7 @@ func (m *triModel) install(d triData) {
 	}
 	m.rows, m.groups, m.declared, m.orphans = d.rows, d.groups, d.declared, d.orphans
 	m.loaded = true
-	m.reselect()
+	m.refilter()
 }
 
 func (m *triModel) push(t toast.Toast) tea.Cmd {
@@ -183,11 +162,20 @@ func (m *triModel) push(t toast.Toast) tea.Cmd {
 	return cmd
 }
 
+// Update handles msg, then re-sizes the list: a toast, the band or the input
+// line can each take a row from it, so the scroll offset View draws with is
+// always one Update kept (E1).
 func (m triModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	nm := next.(triModel)
+	nm.list = nm.list.SetHeight(nm.listRows())
+	return nm, cmd
+}
+
+func (m triModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
-		m.reselect()
 		m.helpOff = m.clampHelp()
 	case toast.Expired:
 		m.toasts = toast.Update(m.toasts, msg)
@@ -265,9 +253,14 @@ func (m triModel) run(action string) (tea.Model, tea.Cmd) {
 		m.helpOff = m.clampHelp()
 	case "help.up":
 		m.helpOff = max(0, m.helpOff-1)
-	case "list.down", "list.up", "list.pgdown", "list.pgup":
-		step := map[string]int{"list.down": 1, "list.up": -1, "list.pgdown": m.listRows(), "list.pgup": -m.listRows()}[action]
-		m.moveTo(m.cursor(m.visible()) + step)
+	case "list.down":
+		m.list = m.list.Move(1)
+	case "list.up":
+		m.list = m.list.Move(-1)
+	case "list.pgdown":
+		m.list = m.list.PageDown()
+	case "list.pgup":
+		m.list = m.list.PageUp()
 	case "row.declare":
 		cmd = m.decide(vDeclare)
 	case "row.ignore":
@@ -293,17 +286,18 @@ func (m triModel) run(action string) (tea.Model, tea.Cmd) {
 	case "group.pick":
 		if i, ok := m.sel(); ok && m.groupCur < len(m.groups) {
 			m.rows[i].group, m.rows[i].picked = m.groups[m.groupCur], true
+			m.refilter() // the filter reads the group
 		}
 		m.mode = modeList
 		m.toasts, cmd = toast.Release(m.toasts)
 	case "row.edit":
 		i, _ := m.sel()
-		m.mode, m.inputFor, m.input = modeInput, "edit", []rune(m.rows[i].pattern)
+		m.mode, m.inputFor, m.input = modeInput, "edit", input.New(m.rows[i].pattern)
 	case "filter":
-		m.mode, m.inputFor, m.before, m.input = modeInput, "filter", m.filter, []rune(m.filter)
+		m.mode, m.inputFor, m.before, m.input = modeInput, "filter", m.filter, input.New(m.filter)
 	case "filter.clear":
 		m.filter = ""
-		m.reselect()
+		m.refilter()
 	case "apply":
 		if m.decidedCount() == 0 {
 			return m, m.push(toast.Toast{Source: "apply", Level: toast.Warn, Text: "nothing decided to write"})
@@ -317,7 +311,7 @@ func (m triModel) run(action string) (tea.Model, tea.Cmd) {
 	case "input.cancel":
 		if m.inputFor == "filter" {
 			m.filter = m.before
-			m.reselect()
+			m.refilter()
 		}
 		m.mode = modeList
 	}
@@ -349,7 +343,7 @@ func (m *triModel) decide(v verdict) tea.Cmd {
 		}
 	}
 	m.rows[i].verdict = v
-	m.moveTo(m.cursor(m.visible()) + 1)
+	m.list = m.list.Move(1)
 	return nil
 }
 
@@ -375,28 +369,20 @@ func (m triModel) startApply() (tea.Model, tea.Cmd) {
 }
 
 // inputKey feeds the text field. Only the input context's own keys act;
-// every other printable key is text, never a command (E13).
+// every other key goes to the field, so a printable key is text, never a
+// command (E13).
 func (m triModel) inputKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if b, ok := m.km.ResolveRaw(m.triActive(), k, m.keyOpts()); ok {
 		return m.run(b.Action)
 	}
-	switch k.Type {
-	case tea.KeyRunes:
-		m.input = append(m.input, k.Runes...)
-	case tea.KeySpace:
-		m.input = append(m.input, ' ')
-	case tea.KeyBackspace:
-		if len(m.input) > 0 {
-			m.input = m.input[:len(m.input)-1]
-		}
-	case tea.KeyCtrlU:
-		m.input = nil
-	default:
+	f, used := m.input.Update(k)
+	if !used {
 		return m, nil
 	}
+	m.input = f
 	if m.inputFor == "filter" {
-		m.filter = string(m.input)
-		m.reselect()
+		m.filter = f.Value()
+		m.refilter()
 	}
 	return m, nil
 }
@@ -410,7 +396,7 @@ func (m triModel) submitInput() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	pat := strings.TrimSpace(string(m.input))
+	pat := strings.TrimSpace(m.input.Value())
 	warn := func(text string) (tea.Model, tea.Cmd) {
 		return m, m.push(toast.Toast{Source: "edit", Level: toast.Warn, Text: text})
 	}
@@ -433,6 +419,7 @@ func (m triModel) submitInput() (tea.Model, tea.Cmd) {
 	}
 	m.rows[i].pattern = pat
 	m.rows[i].paths = matching(pat, m.orphans)
+	m.refilter() // the filter reads the pattern
 	if len(m.rows[i].paths) == 0 {
 		return warn(pat + " matches none of the unclaimed files")
 	}

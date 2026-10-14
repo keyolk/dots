@@ -6,11 +6,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/keyolk/tuikit/input"
 	"github.com/keyolk/tuikit/keys"
 	"github.com/keyolk/tuikit/render"
 	"github.com/keyolk/tuikit/toast"
-
-	"github.com/keyolk/dots/internal/ui"
 )
 
 // detailMinWidth is where the paths pane docks beside the list. Below it the
@@ -142,7 +141,7 @@ func (m triModel) body(h int) string {
 		return render.FitLines(m.th.Muted.Render("scanning…"), m.w, h)
 	case len(m.rows) == 0:
 		return render.FitLines(m.th.Success.Render("every file beside a tracked one is accounted for"), m.w, h)
-	case len(m.visible()) == 0:
+	case m.list.Len() == 0:
 		return render.FitLines(m.th.Muted.Render("no row matches /"+m.filter), m.w, h)
 	}
 	if m.w < detailMinWidth {
@@ -165,11 +164,11 @@ const (
 	countW   = 5
 )
 
-func (m triModel) columns(vis []int, w int) cols {
+func (m triModel) columns(vis []rowRef, w int) cols {
 	var c cols
-	for _, i := range vis {
-		c.group = max(c.group, render.Width(m.rows[i].group))
-		c.reason = max(c.reason, render.Width(m.rows[i].reason))
+	for _, ref := range vis {
+		c.group = max(c.group, render.Width(m.rows[ref.idx].group))
+		c.reason = max(c.reason, render.Width(m.rows[ref.idx].reason))
 	}
 	c.group, c.reason = min(c.group, 14), min(c.reason, 30)
 	fixed := cursorW + verdictW + 1 + countW + 1
@@ -196,19 +195,20 @@ func gap(w int) int {
 }
 
 func (m triModel) viewList(w, h int) string {
-	vis := m.visible()
-	cur := m.cursor(vis)
-	start, end, _ := render.Window(len(vis), max(h-2, 1), cur, m.offset)
-	top, bottom := render.More(start, len(vis)-end, h)
+	start, end := m.list.Window()
+	above, below := m.list.Hidden()
+	top, bottom := render.More(above, below, h)
+	vis := m.list.Items()
 	c := m.columns(vis, w)
+	cur := m.list.Index()
 	lines := []string{m.th.Subtle.Render(top)}
 	for p := start; p < end; p++ {
-		lines = append(lines, m.rowLine(m.rows[vis[p]], w, c, p == cur))
+		lines = append(lines, m.rowLine(m.rows[vis[p].idx], w, c, p == cur))
 	}
 	return strings.Join(append(lines, m.th.Subtle.Render(bottom)), "\n")
 }
 
-// rowLine pads every cell in terminal cells with ui.Pad, so a Hangul path
+// rowLine pads every cell in terminal cells, so a Hangul path
 // does not push the next column (E7). The selected row is drawn plain and then
 // highlighted whole, so the highlight is one band and not a patchwork.
 func (m triModel) rowLine(r triRow, w int, c cols, selected bool) string {
@@ -219,7 +219,7 @@ func (m triModel) rowLine(r triRow, w int, c cols, selected bool) string {
 		if selected {
 			st = m.th.Text.UnsetForeground()
 		}
-		return ui.Pad(st, render.Truncate(s, cw), cw) + " "
+		return st.Render(render.PadRight(render.Truncate(s, cw), cw)) + " "
 	}
 	lead := "  "
 	if selected {
@@ -271,11 +271,7 @@ func (m triModel) inputLine() string {
 	if m.inputFor == "edit" {
 		prompt = "pattern: "
 	}
-	caret := "▏"
-	if m.th.Glyphs.ASCII {
-		caret = "_"
-	}
-	return render.Truncate(m.th.Key.Render(prompt)+string(m.input)+caret, m.w)
+	return m.th.Key.Render(prompt) + m.input.View(max(m.w-render.Width(prompt), 1), true, input.Style{Text: m.th.Text})
 }
 
 func (m triModel) helpBox() (int, int) { return min(64, m.w-4), min(22, m.h-2) }

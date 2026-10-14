@@ -14,6 +14,7 @@ import (
 	"github.com/keyolk/tuikit/render"
 	"github.com/keyolk/tuikit/theme"
 	"github.com/keyolk/tuikit/toast"
+	"github.com/keyolk/tuikit/tuitest"
 
 	"github.com/keyolk/dots/internal/ui"
 )
@@ -99,28 +100,11 @@ func typeText(t *testing.T, m triModel, s string) triModel {
 }
 
 // runCmd runs a command and every command a batch holds, returning their
-// messages. Toast ticks sleep for seconds, so each leaf gets a short deadline
-// and one that misses it is dropped: the tests never need a tick to fire.
+// messages. Toast ticks are timers and are dropped: the tests never need one
+// to fire. The scans and writes run real file I/O, so the wait is generous.
 func runCmd(t *testing.T, cmd tea.Cmd) []tea.Msg {
 	t.Helper()
-	if cmd == nil {
-		return nil
-	}
-	ch := make(chan tea.Msg, 1)
-	go func() { ch <- cmd() }()
-	select {
-	case msg := <-ch:
-		if batch, ok := msg.(tea.BatchMsg); ok {
-			var out []tea.Msg
-			for _, c := range batch {
-				out = append(out, runCmd(t, c)...)
-			}
-			return out
-		}
-		return []tea.Msg{msg}
-	case <-time.After(2 * time.Second):
-		return nil
-	}
+	return tuitest.Drain(cmd, 2*time.Second)
 }
 
 func (m triModel) rowByID(t *testing.T, id string) triRow {
@@ -146,13 +130,13 @@ func (m triModel) ids() []string {
 func selectID(t *testing.T, m triModel, id string) triModel {
 	t.Helper()
 	for range m.rows {
-		if m.selID == id {
+		if m.list.SelectedID() == id {
 			return m
 		}
 		m, _ = press(t, m, "j")
 	}
-	if m.selID != id {
-		t.Fatalf("could not reach %q; cursor on %q", id, m.selID)
+	if m.list.SelectedID() != id {
+		t.Fatalf("could not reach %q; cursor on %q", id, m.list.SelectedID())
 	}
 	return m
 }
@@ -253,8 +237,8 @@ func TestTriageTUICursorSurvivesReclassification(t *testing.T) {
 	if got := m.ids(); len(got) != 1 || got[0] != ".claude/hooks/state" {
 		t.Fatalf("rows after the write = %v", got)
 	}
-	if m.selID != ".claude/hooks/state" {
-		t.Fatalf("cursor moved to %q", m.selID)
+	if m.list.SelectedID() != ".claude/hooks/state" {
+		t.Fatalf("cursor moved to %q", m.list.SelectedID())
 	}
 	if v := m.rowByID(t, ".claude/hooks/state").verdict; v != vSkip {
 		t.Fatalf("the skip was lost on rescan: %s", verdictLabel(v))
