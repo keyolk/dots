@@ -107,3 +107,34 @@ func TestWidthPadsInsideTheStyle(t *testing.T) {
 		t.Fatalf("printable width = %d, want 14", w)
 	}
 }
+
+// TestPadNeverWraps pins the bug Pad exists for: Style.Width wraps, so a name
+// longer than its column became two lines in `dots config`.
+func TestPadNeverWraps(t *testing.T) {
+	saved := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(saved)
+
+	long := "claude-code-plugins-extra"
+	if wrapped := Heading.Width(16).Render(long); !strings.Contains(wrapped, "\n") {
+		t.Skip("lipgloss no longer wraps at Width; Pad is still correct but this guard is moot")
+	}
+	got := Pad(Heading, long, 16)
+	if strings.Contains(got, "\n") {
+		t.Fatalf("Pad wrapped a long value: %q", got)
+	}
+	if !strings.Contains(got, long) {
+		t.Fatalf("Pad cut the value: %q", got)
+	}
+}
+
+// TestPadMeasuresCells covers the CJK case: fmt's %-Ns pads by rune, so a
+// Korean path took half the room it needed and pushed the next column right.
+func TestPadMeasuresCells(t *testing.T) {
+	for _, s := range []string{"vault", "문서/메모", "a한b"} {
+		got := Pad(Heading, s, 14)
+		if w := lipgloss.Width(got); w != 14 {
+			t.Fatalf("Pad(%q) is %d cells wide, want 14", s, w)
+		}
+	}
+}

@@ -259,7 +259,7 @@ func printConfigView(v configView) {
 			matched = ui.Warn.Render(matched)
 		}
 		fmt.Printf("  %s %s  %s %s\n",
-			ui.Heading.Width(16).Render(g.Name),
+			ui.Pad(ui.Heading, g.Name, 16),
 			matched,
 			ui.Muted.Render(fmt.Sprintf("%2d pattern(s)", g.Patterns)),
 			ui.Muted.Render(strings.Join(flags, " ")))
@@ -273,7 +273,7 @@ func printConfigView(v configView) {
 			extra = ui.Muted.Render(fmt.Sprintf("  + %d binary/binaries", p.Binaries))
 		}
 		fmt.Printf("  %s %4d declared%s\n",
-			ui.Heading.Width(16).Render(p.Source), p.Declared, extra)
+			ui.Pad(ui.Heading, p.Source, 16), p.Declared, extra)
 	}
 
 	fmt.Printf("\n%s\n", ui.Muted.Render("edit: "+v.Manifest))

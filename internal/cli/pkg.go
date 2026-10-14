@@ -48,14 +48,14 @@ func newPkgDiffCmd() *cobra.Command {
 			var totalMissing, totalExtra int
 			for _, d := range diffs {
 				if !d.Available {
-					fmt.Printf("%s %s\n", ui.Heading.Width(8).Render(d.Source),
+					fmt.Printf("%s %s\n", ui.Pad(ui.Heading, d.Source, 8),
 						ui.Muted.Render("unavailable on this machine"))
 					continue
 				}
 				totalMissing += len(d.Missing)
 				totalExtra += len(d.Extra)
 
-				fmt.Printf("%s %s", ui.Heading.Width(8).Render(d.Source),
+				fmt.Printf("%s %s", ui.Pad(ui.Heading, d.Source, 8),
 					ui.OK.Render(fmt.Sprintf("%d managed", d.Managed)))
 				if len(d.Missing) > 0 {
 					fmt.Printf(", %s", ui.StateMissing.Render(fmt.Sprintf("%d missing", len(d.Missing))))
@@ -214,7 +214,7 @@ reproduces it instead of leaving a file whose origin nobody remembers.`,
 						mark = ui.Fail.Width(8).Render("MISSING")
 						missing++
 					}
-					fmt.Printf("  %s %-20s %s\n", mark, s.Name, ui.Muted.Render(s.Version))
+					fmt.Printf("  %s %s %s\n", mark, ui.Pad(ui.Path, s.Name, 20), ui.Muted.Render(s.Version))
 					if !s.Present && s.Install != "" {
 						fmt.Println(ui.Fix.Render("           install: " + s.Install))
 					}
