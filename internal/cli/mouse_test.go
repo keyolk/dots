@@ -351,3 +351,28 @@ func TestMouseRowsNeverExceedPaneWidth(t *testing.T) {
 		}
 	}
 }
+
+// TestMouseGroupDialogScrolledClick clicks a group in a dialog scrolled past
+// its first rows: the hit test must add the window start, or the click lands
+// on a group near the top of the list.
+func TestMouseGroupDialogScrolledClick(t *testing.T) {
+	e := hooksEnv(t)
+	m := startTUI(t, e, 120, 14) // groupRows = 4
+	m.groups = nil
+	for i := 0; i < 10; i++ {
+		m.groups = append(m.groups, fmt.Sprintf("grp-%02d", i))
+	}
+	t0 := time.Unix(1000, 0)
+	m = withClock(m, &t0)
+	m, _ = press(t, m, "g")
+	for i := 0; i < 8; i++ {
+		m, _ = press(t, m, "down")
+	}
+	if m.groupCur != 8 {
+		t.Fatalf("down x8: groupCur %d", m.groupCur)
+	}
+	m = clickOn(t, m, "grp-07")
+	if m.groupCur != 7 || m.mode != modeGroup {
+		t.Fatalf("click on grp-07 in a scrolled dialog: groupCur %d mode %v", m.groupCur, m.mode)
+	}
+}
