@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,6 +16,7 @@ import (
 	"github.com/keyolk/tuikit/input"
 	"github.com/keyolk/tuikit/keys"
 	"github.com/keyolk/tuikit/list"
+	"github.com/keyolk/tuikit/mouse"
 	"github.com/keyolk/tuikit/theme"
 	"github.com/keyolk/tuikit/toast"
 
@@ -73,6 +75,8 @@ type triModel struct {
 	groupCur int
 	helpOff  int
 
+	clicks   mouse.Clicks
+	now      func() time.Time // test clock; nil means time.Now
 	scanGen  async.Gen
 	applying async.Flight
 	w, h     int
@@ -199,7 +203,12 @@ func (m triModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.applied(msg)
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		// Any key between two clicks breaks a double click; reset here, not in
+		// the mouse path, which never goes through a KeyMsg.
+		m.clicks = mouse.Clicks{}
 		m.toasts = toast.OnKey(m.toasts)
 		if m.mode == modeInput {
 			return m.inputKey(msg)
@@ -445,7 +454,7 @@ func runTriageTUI(path, host string) error {
 		// Errors are sticky, so there is no tick to run.
 		m.toasts, _ = toast.Push(m.toasts, toast.Toast{Source: "keys", Level: toast.Error, Text: "keys.yaml ignored: " + kerr.Error()})
 	}
-	_, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
+	_, err := tea.NewProgram(m, append([]tea.ProgramOption{tea.WithAltScreen()}, mouse.ProgramOptions()...)...).Run()
 	if logBuf.Len() > 0 {
 		fmt.Fprint(ui.Stderr, logBuf.String())
 	}

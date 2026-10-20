@@ -120,21 +120,29 @@ func (m triModel) View() string {
 	parts = append(parts, m.km.Footer(m.triActive(), m.w, m.keyOpts(), m.th.FooterStyle()))
 	frame := strings.Join(parts, "\n")
 
-	var box string
+	box := m.overlayBox()
+	if box == "" {
+		return frame
+	}
+	return render.Center(render.Dim(frame), box, m.w, m.h) // over the list, not instead of it (E8)
+}
+
+// overlayBox is the dialog drawn over the list, or "" in the list and input
+// modes. View and the mouse hit tests both read it, so a click lands on the
+// box that was drawn.
+func (m triModel) overlayBox() string {
 	switch m.mode {
 	case modeHelp:
 		boxW, boxH := m.helpBox()
 		cw, ch := render.BoxContent(boxW, boxH, m.th.BoxFocus)
 		lines, _ := keys.RenderHelp(m.helpSections(), cw, ch, m.helpOff, m.th.HelpStyle())
-		box = render.Box("", strings.Join(lines, "\n"), boxW, boxH, m.th.BoxFocus)
+		return render.Box("", strings.Join(lines, "\n"), boxW, boxH, m.th.BoxFocus)
 	case modeGroup:
-		box = m.groupDialog()
+		return m.groupDialog()
 	case modeConfirm:
-		box = m.confirmDialog()
-	default:
-		return frame
+		return m.confirmDialog()
 	}
-	return render.Center(render.Dim(frame), box, m.w, m.h) // over the list, not instead of it (E8)
+	return ""
 }
 
 func (m triModel) body(h int) string {
@@ -149,12 +157,21 @@ func (m triModel) body(h int) string {
 	if m.w < detailMinWidth {
 		return render.Safe("list", m.w, h, m.logf, func() string { return m.viewList(m.w, h) })
 	}
-	listW := m.w*3/5 - 1
+	listW := m.listWidth()
 	detailW := m.w - listW - 3
 	list := render.Safe("list", listW, h, m.logf, func() string { return m.viewList(listW, h) })
 	detail := render.Safe("detail", detailW, h, m.logf, func() string { return m.viewDetail(detailW, h) })
 	sep := m.th.Subtle.Render(strings.TrimSuffix(strings.Repeat(" │ \n", h), "\n"))
 	return lipgloss.JoinHorizontal(lipgloss.Top, render.FitLines(list, listW, h), sep, detail)
+}
+
+// listWidth is the list pane's width: all of it below detailMinWidth, else
+// the left three fifths beside the paths pane.
+func (m triModel) listWidth() int {
+	if m.w < detailMinWidth {
+		return m.w
+	}
+	return m.w*3/5 - 1
 }
 
 // cols are the list's column widths in cells, measured over the rows shown.
@@ -305,6 +322,9 @@ func (m triModel) clampHelp() int {
 	return off
 }
 
+// groupRows is how many group names the dialog draws at once.
+func (m triModel) groupRows() int { return max(m.h-10, 1) }
+
 func (m triModel) groupDialog() string {
 	i, _ := m.sel()
 	innerW := min(48, m.w-8)
@@ -313,7 +333,7 @@ func (m triModel) groupDialog() string {
 		render.Truncate(m.rows[i].pattern, innerW),
 		"",
 	}
-	rows := max(m.h-10, 1)
+	rows := m.groupRows()
 	start, end, _ := render.Window(len(m.groups), rows, m.groupCur, 0)
 	top, bottom := render.More(start, len(m.groups)-end, rows+2)
 	if top != "" {
