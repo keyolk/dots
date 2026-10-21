@@ -1,11 +1,7 @@
 package cli
 
 import (
-	"fmt"
-	"unicode/utf8"
-
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/tuikit/mouse"
 	"github.com/keyolk/tuikit/selection"
@@ -40,14 +36,6 @@ const (
 	paneTriDialog = "dialog"
 )
 
-// selectionStyle survives NO_COLOR: reverse video needs no color. Tests swap
-// it to see which cells it covers.
-var selectionStyle = lipgloss.NewStyle().Reverse(true)
-
-// copySelection builds the clipboard command for a finished selection. Tests
-// swap it to capture the text without ever writing the real clipboard.
-var copySelection = selection.Copy
-
 // selectionPanes lists what a drag can select on the screen View draws, from
 // the rects View and the mouse hit tests use.
 func (m triModel) selectionPanes() []selection.Pane {
@@ -79,28 +67,19 @@ func (m triModel) selectionPanes() []selection.Pane {
 // dialogInner is the open dialog's box inside its border and padding: the
 // frame of the box is never selected.
 func (m triModel) dialogInner() mouse.Rect {
-	r := m.overlayRect()
-	st := m.th.BoxFocus
-	return mouse.Rect{
-		X: r.X + st.GetBorderLeftSize() + st.GetPaddingLeft(),
-		Y: r.Y + st.GetBorderTopSize() + st.GetPaddingTop(),
-		W: max(r.W-st.GetHorizontalFrameSize(), 0),
-		H: max(r.H-st.GetVerticalFrameSize(), 0),
-	}
+	return m.overlayRect().InsetStyle(m.th.BoxFocus)
 }
 
-// selectMouse feeds the event to the selection before any click handling.
-// handled means the selection consumed it and it is not also a click. No
-// pane here hands over Lines, so Result.Scroll never asks for anything.
-func (m triModel) selectMouse(msg tea.MouseMsg) (triModel, tea.Cmd, bool) {
+// selectMouse feeds a mouse event (or an auto-scroll tick) to the selection
+// before any click handling. handled means the selection consumed it and it
+// is not also a click. No pane here hands over Lines, so a drag never
+// scrolls a pane and Result.Scroll is never set; the tick is routed anyway
+// so a pane that gains Lines scrolls without rewiring.
+func (m triModel) selectMouse(msg tea.Msg) (triModel, tea.Cmd, bool) {
 	// view is the frame before the highlight, so a highlight style never
 	// reaches a copy. It is pure (a value receiver), so calling it from
 	// Update changes nothing.
-	r := m.drag.Mouse(msg, m.selectionPanes(), m.view(), m.clock())
-	var cmd tea.Cmd
-	if r.Copy != "" {
-		cmd = copySelection(r.Copy)
-	}
+	r, cmd := m.drag.Update(msg, m.selectionPanes, m.view, m.clock())
 	return m, cmd, r.Consumed
 }
 
@@ -108,9 +87,9 @@ func (m triModel) selectMouse(msg tea.MouseMsg) (triModel, tea.Cmd, bool) {
 // stays until read (E6): a copy that silently failed pastes the old
 // clipboard.
 func (m triModel) noteCopied(msg selection.CopiedMsg) (tea.Model, tea.Cmd) {
+	lvl := toast.Success
 	if msg.Err != nil {
-		return m, m.push(toast.Toast{Source: "copy", Level: toast.Error, Text: "copy failed: " + msg.Err.Error()})
+		lvl = toast.Error
 	}
-	return m, m.push(toast.Toast{Source: "copy", Level: toast.Success,
-		Text: fmt.Sprintf("copied %d chars", utf8.RuneCountInString(msg.Text))})
+	return m, m.push(toast.Toast{Source: "copy", Level: lvl, Text: msg.Note()})
 }

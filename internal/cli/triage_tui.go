@@ -211,6 +211,9 @@ func (m triModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouse(msg)
 	case selection.CopiedMsg:
 		return m.noteCopied(msg)
+	case selection.AutoScrollMsg:
+		next, cmd, _ := m.selectMouse(msg)
+		return next, cmd
 	case tea.KeyMsg:
 		// Any key between two clicks breaks a double click; reset here, not in
 		// the mouse path, which never goes through a KeyMsg.

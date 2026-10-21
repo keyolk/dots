@@ -3,29 +3,36 @@ package cli
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/keyolk/tuikit/selection"
+	"github.com/keyolk/tuikit/tuitest"
 )
 
 // Coordinates come from where View drew text (at, row), never from the pane
-// arithmetic under test. The copy is captured through copySelection; the
-// clipboard command is never run.
+// arithmetic under test. The copy is captured through selection.Clipboard
+// and the commands Update returns are run, the path the app takes; the real
+// clipboard is never written.
 
 func captureCopies(t *testing.T) *[]string {
 	t.Helper()
-	var got []string
-	old := copySelection
-	copySelection = func(s string) tea.Cmd {
+	var (
+		mu  sync.Mutex
+		got []string
+	)
+	old := selection.Clipboard
+	selection.Clipboard = func(s string) error {
+		mu.Lock()
+		defer mu.Unlock()
 		got = append(got, s)
-		return func() tea.Msg { return nil }
+		return nil
 	}
-	t.Cleanup(func() { copySelection = old })
+	t.Cleanup(func() { selection.Clipboard = old })
 	return &got
 }
 
@@ -36,28 +43,36 @@ func lastCopy(c *[]string) string {
 	return (*c)[len(*c)-1]
 }
 
-// markSelection draws the highlight as upper case, so a test sees which
-// cells it covers whatever the color profile.
-func markSelection(t *testing.T) {
+// sendRun is send that also runs the command Update returned and feeds the
+// copy's result back, as Bubble Tea would.
+func sendRun(t *testing.T, m triModel, msg tea.Msg) triModel {
 	t.Helper()
-	old := selectionStyle
-	selectionStyle = lipgloss.NewStyle().Transform(strings.ToUpper)
-	t.Cleanup(func() { selectionStyle = old })
+	next, cmd := m.Update(msg)
+	m = next.(triModel)
+	for _, out := range tuitest.Drain(cmd, 10*time.Millisecond) {
+		if c, ok := out.(selection.CopiedMsg); ok {
+			m = send(t, m, c)
+		}
+	}
+	return m
 }
+
+// highlighted is the text drawn in reverse video, one entry per row.
+func highlighted(m triModel) []string { return tuitest.Reversed(m.View()) }
 
 func lpress(t *testing.T, m triModel, x, y int) triModel {
 	t.Helper()
-	return send(t, m, mouseAt(x, y, tea.MouseButtonLeft, tea.MouseActionPress))
+	return sendRun(t, m, mouseAt(x, y, tea.MouseButtonLeft, tea.MouseActionPress))
 }
 
 func lmotion(t *testing.T, m triModel, x, y int) triModel {
 	t.Helper()
-	return send(t, m, mouseAt(x, y, tea.MouseButtonLeft, tea.MouseActionMotion))
+	return sendRun(t, m, mouseAt(x, y, tea.MouseButtonLeft, tea.MouseActionMotion))
 }
 
 func lrelease(t *testing.T, m triModel, x, y int) triModel {
 	t.Helper()
-	return send(t, m, mouseAt(x, y, tea.MouseButtonNone, tea.MouseActionRelease))
+	return sendRun(t, m, mouseAt(x, y, tea.MouseButtonNone, tea.MouseActionRelease))
 }
 
 func dragFrom(t *testing.T, m triModel, x0, y0, x1, y1 int) triModel {
@@ -90,7 +105,6 @@ func rightmost(t *testing.T, m triModel, needle string) (int, int) {
 
 func TestDragFromTheListTowardThePathsStaysInTheList(t *testing.T) {
 	c := captureCopies(t)
-	markSelection(t)
 	m := startTUI(t, hooksEnv(t), 120, 20)
 	x0, y0 := at(t, m, ".claude/hooks/*.log")
 	_, y1 := at(t, m, ".claude/hooks/state")
@@ -103,14 +117,16 @@ func TestDragFromTheListTowardThePathsStaysInTheList(t *testing.T) {
 	if strings.Contains(got, "│") || strings.Contains(got, "file(s)") {
 		t.Fatalf("the copy reached past the list into the divider or the paths pane: %q", got)
 	}
-	// The highlight is upper case: the list cells on the last row are, and
-	// nothing right of the divider is.
-	cols := strings.SplitN(screenRow(m, y1), "│", 2)
-	if len(cols) < 2 || !strings.Contains(cols[0], ".CLAUDE/HOOKS/STATE") {
-		t.Fatalf("the list cells on the last row should be highlighted: %q", screenRow(m, y1))
+	// One highlighted run per row, all inside the list: the last ends on
+	// the state row, and none reaches the divider or the paths pane.
+	hl := highlighted(m)
+	if len(hl) != y1-y0+1 || !strings.Contains(hl[len(hl)-1], ".claude/hooks/state") {
+		t.Fatalf("the list rows dragged over should be highlighted, got %q", hl)
 	}
-	if cols[1] != strings.ToLower(cols[1]) {
-		t.Fatalf("the highlight reached into the paths pane: %q", screenRow(m, y1))
+	for _, run := range hl {
+		if strings.Contains(run, "│") || strings.Contains(run, "file(s)") {
+			t.Fatalf("the highlight reached into the paths pane: %q", hl)
+		}
 	}
 }
 
@@ -273,14 +289,53 @@ func TestCopiedMsgShowsAToast(t *testing.T) {
 	}
 }
 
-// The copy is a command Update returns; building it is not enough. The
-// returned command is the swapped fake and is never run.
+// The copy is a command Update returns; building it is not enough. Running
+// it writes the stubbed clipboard and reports CopiedMsg.
 func TestReleaseReturnsTheCopyCommand(t *testing.T) {
-	captureCopies(t)
+	c := captureCopies(t)
 	m := startTUI(t, hooksEnv(t), 120, 20)
 	x0, y0 := at(t, m, ".claude/hooks/*.md")
 	m = lmotion(t, lpress(t, m, x0, y0), x0+6, y0)
-	if _, cmd := m.Update(mouseAt(x0+6, y0, tea.MouseButtonNone, tea.MouseActionRelease)); cmd == nil {
-		t.Fatal("the release that ends a drag should return the copy command")
+	_, cmd := m.Update(mouseAt(x0+6, y0, tea.MouseButtonNone, tea.MouseActionRelease))
+	var copied []string
+	for _, msg := range tuitest.Drain(cmd, 10*time.Millisecond) {
+		if cm, ok := msg.(selection.CopiedMsg); ok {
+			copied = append(copied, cm.Text)
+		}
+	}
+	if len(copied) != 1 || copied[0] != ".claude" || lastCopy(c) != copied[0] {
+		t.Fatalf("the release should return the copy command: copied %q, clipboard %q", copied, *c)
+	}
+}
+
+func TestNoColorKeepsTheSelectionHighlight(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	captureCopies(t)
+	m := startTUI(t, hooksEnv(t), 120, 20)
+	x0, y0 := at(t, m, ".claude/hooks/*.md")
+	m = dragFrom(t, m, x0, y0, x0+8, y0)
+	if hl := highlighted(m); len(hl) != 1 || hl[0] != ".claude/h" {
+		t.Fatalf("under NO_COLOR the selection should still be drawn in reverse: %q", hl)
+	}
+}
+
+// A drag past the bottom of a pane without Lines does not scroll it and
+// schedules no auto-scroll tick: the paths pane has no scroll of its own.
+func TestDragPastThePathsPaneSchedulesNoAutoScroll(t *testing.T) {
+	captureCopies(t)
+	m := startTUI(t, hooksEnv(t), 120, 20)
+	x, y := rightmost(t, m, ".claude/hooks/README.md")
+	before := ansi.Strip(m.View())
+	m = lpress(t, m, x, y)
+	next, cmd := m.Update(mouseAt(x, m.h+2, tea.MouseButtonLeft, tea.MouseActionMotion))
+	m = next.(triModel)
+	for _, msg := range tuitest.Drain(cmd, 200*time.Millisecond) {
+		if _, ok := msg.(selection.AutoScrollMsg); ok {
+			t.Fatal("a pane without Lines cannot scroll, so no tick should be scheduled")
+		}
+	}
+	m.drag.Clear()
+	if after := ansi.Strip(m.View()); after != before {
+		t.Fatalf("the screen moved under a drag past the paths pane:\n%s", after)
 	}
 }

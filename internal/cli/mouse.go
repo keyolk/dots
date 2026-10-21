@@ -40,10 +40,17 @@ func (m triModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// a click dismisses a toast: the panes it hit-tests are the ones on the
 	// frame the press landed on. A press that does not move stays the click
 	// below.
-	m, copyCmd, consumed := m.selectMouse(msg)
+	m, selCmd, consumed := m.selectMouse(msg)
 	if consumed || m.mode == modeInput {
-		return m, copyCmd
+		return m, selCmd
 	}
+	next, cmd := m.clickMouse(msg)
+	return next, tea.Batch(selCmd, cmd)
+}
+
+// clickMouse is the click and wheel handling for an event the selection
+// left to the app.
+func (m triModel) clickMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if mouse.IsLeftPress(msg) {
 		m.toasts = toast.OnKey(m.toasts) // a click is a keystroke for toasts
 	}
