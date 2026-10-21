@@ -1,6 +1,9 @@
 package cli
 
-import "github.com/keyolk/tuikit/keys"
+import (
+	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/split"
+)
 
 // Key contexts of the triage screen. One is active at a time, innermost
 // first, over global.
@@ -29,7 +32,7 @@ var triageStacks = [][]keys.Ctx{
 // triageKeymap is the one table that drives dispatch, the footer and the ?
 // help. Users rebind it in ~/.config/dots/keys.yaml.
 func triageKeymap() keys.Keymap {
-	return keys.New(
+	bs := []keys.Binding{
 		keys.Binding{Action: "quit", Keys: []string{"q", "esc", "ctrl+c"}, Ctx: ctxGlobal, Help: "quit", Pinned: true, Footer: 2},
 		keys.Binding{Action: "help", Keys: []string{"?"}, Ctx: ctxGlobal, Help: "help", Pinned: true, Footer: 1},
 
@@ -63,7 +66,8 @@ func triageKeymap() keys.Keymap {
 
 		keys.Binding{Action: "input.submit", Keys: []string{"enter"}, Ctx: ctxInput, Help: "accept", Footer: 1},
 		keys.Binding{Action: "input.cancel", Keys: []string{"esc", "ctrl+c"}, Ctx: ctxInput, Help: "cancel", Footer: 1},
-	)
+	}
+	return keys.New(append(bs, splitBindings()...)...)
 }
 
 // triActive is the context stack for the screen's current mode.
@@ -110,6 +114,8 @@ func (m triModel) offered(action string) bool {
 		return m.list.Len() > 1
 	case "row.group":
 		return len(m.groups) > 1
+	case split.ActionGrow, split.ActionShrink, split.ActionReset:
+		return m.splitShown()
 	}
 	return true
 }

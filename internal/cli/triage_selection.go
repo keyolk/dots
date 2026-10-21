@@ -51,10 +51,8 @@ func (m triModel) selectionPanes() []selection.Pane {
 	var panes []selection.Pane
 	if pane := m.listPane(); pane.H > 0 {
 		panes = append(panes, selection.Pane{ID: paneTriList, Kind: selection.List, Rect: m.listRect()})
-		if m.w >= detailMinWidth {
-			x := pane.X + pane.W + 3 // the " │ " divider body puts between them
-			panes = append(panes, selection.Pane{ID: paneTriDetail, Kind: selection.Text,
-				Rect: mouse.Rect{X: x, Y: pane.Y, W: max(m.w-x, 0), H: pane.H}})
+		if _, _, detail := m.triPanes(); detail.W > 0 {
+			panes = append(panes, selection.Pane{ID: paneTriDetail, Kind: selection.Text, Rect: detail})
 		}
 	}
 	if m.mode == modeInput {

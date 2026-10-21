@@ -388,11 +388,8 @@ func TestTriageTUIFilterOwnsTheKeyboard(t *testing.T) {
 	if m.filter != "" {
 		t.Fatal("esc did not clear the filter")
 	}
-	_, cmd := press(t, m, "esc")
-	if cmd == nil {
-		t.Fatal("esc with no filter did not quit")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
+	m, cmd := press(t, m, "esc")
+	if !quits(t, m, cmd) {
 		t.Fatal("esc with no filter did not quit")
 	}
 }

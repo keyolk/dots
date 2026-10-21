@@ -23,6 +23,8 @@ import (
 
 	"github.com/keyolk/dots/internal/dotfile"
 	"github.com/keyolk/dots/internal/ui"
+	"github.com/keyolk/tuikit/prefs"
+	"github.com/keyolk/tuikit/split"
 )
 
 type (
@@ -79,8 +81,13 @@ type triModel struct {
 	clicks mouse.Clicks
 	// drag is the drag selection (triage_selection.go), cleared where
 	// clicks is.
-	drag     selection.Selection
-	now      func() time.Time // test clock; nil means time.Now
+	drag selection.Selection
+	now  func() time.Time // test clock; nil means time.Now
+	// split is the list | paths boundary (triage_split.go); saver writes it
+	// to ui.json. Only runTriageTUI names the Saver's app: a test's zero
+	// Saver writes nothing.
+	split    split.Model
+	saver    prefs.Saver[triUIState]
 	scanGen  async.Gen
 	applying async.Flight
 	w, h     int
@@ -209,6 +216,8 @@ func (m triModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applied(msg)
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
+	case prefs.SaveTick, prefs.Saved:
+		return m.savedMsg(msg)
 	case selection.CopiedMsg:
 		return m.noteCopied(msg)
 	case selection.AutoScrollMsg:
@@ -261,7 +270,9 @@ func (m triModel) run(action string) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch action {
 	case "quit":
-		return m, tea.Quit
+		return m.quit()
+	case split.ActionGrow, split.ActionShrink, split.ActionReset:
+		return m.runSplit(action)
 	case "help":
 		m.mode, m.helpOff = modeHelp, 0
 		m.toasts = toast.Hold(m.toasts) // toasts wait while a dialog is up (E6)
@@ -461,6 +472,13 @@ func runTriageTUI(path, host string) error {
 	km, kerr := triageKeymap().LoadOverrides(keys.ConfigPath("dots"), triageStacks...)
 	th := theme.NewWith(theme.NewRenderer(os.Stdout), ui.Roles(), theme.DetectGlyphs("dots"))
 	m := newTriageModel(path, host, km, th, logger.Printf)
+	m.saver = prefs.NewSaver[triUIState](stateApp, 0)
+	if st, err := prefs.Load(stateApp, triUIState{}); err != nil {
+		// A corrupt ui.json costs the saved layout, not the session.
+		m.toasts, _ = toast.Push(m.toasts, toast.Toast{Source: "prefs", Level: toast.Error, Text: "ui.json ignored: " + err.Error()})
+	} else {
+		m = m.restoreUI(st)
+	}
 	if kerr != nil {
 		// Errors are sticky, so there is no tick to run.
 		m.toasts, _ = toast.Push(m.toasts, toast.Toast{Source: "keys", Level: toast.Error, Text: "keys.yaml ignored: " + kerr.Error()})

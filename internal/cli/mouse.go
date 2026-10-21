@@ -40,12 +40,18 @@ func (m triModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// a click dismisses a toast: the panes it hit-tests are the ones on the
 	// frame the press landed on. A press that does not move stays the click
 	// below.
+	// The split comes first of all: a divider press is a resize, never a
+	// selection or a click.
+	m, splitCmd, consumed := m.splitMouse(msg)
+	if consumed {
+		return m, splitCmd
+	}
 	m, selCmd, consumed := m.selectMouse(msg)
 	if consumed || m.mode == modeInput {
-		return m, selCmd
+		return m, tea.Batch(splitCmd, selCmd)
 	}
 	next, cmd := m.clickMouse(msg)
-	return next, tea.Batch(selCmd, cmd)
+	return next, tea.Batch(splitCmd, selCmd, cmd)
 }
 
 // clickMouse is the click and wheel handling for an event the selection
@@ -149,7 +155,8 @@ func (m triModel) listPane() mouse.Rect {
 	if !m.loaded || m.list.Len() == 0 {
 		return mouse.Rect{}
 	}
-	return mouse.Rect{X: 0, Y: m.bodyTop(), W: m.listWidth(), H: m.bodyHeight()}
+	list, _, _ := m.triPanes()
+	return list
 }
 
 // listRect is the entry rows only: viewList draws one More line above them.
