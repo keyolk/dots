@@ -8,6 +8,7 @@ import (
 
 	"github.com/keyolk/tuikit/input"
 	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/mouse"
 	"github.com/keyolk/tuikit/render"
 	"github.com/keyolk/tuikit/selection"
 	"github.com/keyolk/tuikit/toast"
@@ -162,24 +163,16 @@ func (m triModel) body(h int) string {
 	case m.list.Len() == 0:
 		return render.FitLines(m.th.Muted.Render("no row matches /"+m.filter), m.w, h)
 	}
-	if m.w < detailMinWidth {
-		return render.Safe("list", m.w, h, m.logf, func() string { return m.viewList(m.w, h) })
+	// The split's rects (triPanes), the ones the mouse and the selection use.
+	// Below detailMinWidth the split shows the list alone.
+	lr, div, dr := m.triPanes()
+	list := render.Safe("list", lr.W, h, m.logf, func() string { return m.viewList(lr.W, h) })
+	var detail string
+	if dr.W > 0 {
+		detail = render.Safe("detail", dr.W, h, m.logf, func() string { return m.viewDetail(dr.W, h) })
 	}
-	listW := m.listWidth()
-	detailW := m.w - listW - 3
-	list := render.Safe("list", listW, h, m.logf, func() string { return m.viewList(listW, h) })
-	detail := render.Safe("detail", detailW, h, m.logf, func() string { return m.viewDetail(detailW, h) })
-	sep := m.th.Subtle.Render(strings.TrimSuffix(strings.Repeat(" │ \n", h), "\n"))
-	return lipgloss.JoinHorizontal(lipgloss.Top, render.FitLines(list, listW, h), sep, detail)
-}
-
-// listWidth is the list pane's width: all of it below detailMinWidth, else
-// the left three fifths beside the paths pane.
-func (m triModel) listWidth() int {
-	if m.w < detailMinWidth {
-		return m.w
-	}
-	return m.w*3/5 - 1
+	s := m.paneSplit()
+	return s.Join(mouse.Rect{W: m.w, H: h}, list, s.DrawDivider(div, m.th.Subtle), detail)
 }
 
 // cols are the list's column widths in cells, measured over the rows shown.

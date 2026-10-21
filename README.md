@@ -236,7 +236,9 @@ gains include and exclude lines, and `dots status` acts on them from then on.
 `-i` opens the same proposals as a screen: `d` declare, `i` ignore, `s` skip,
 `g` move a pattern to another group, `e` edit the pattern, `/` filter, `a`
 write (confirmed with `y`). The paths behind the selected pattern dock beside
-the list on a wide terminal, and `?` lists every key. It writes through the
+the list on a wide terminal (110 columns or more); `<` `>` move the boundary,
+`=` resets it, and the `│` between them drags (a double click resets). The
+boundary is kept in `~/.local/state/dots/ui.json`. `?` lists every key. It writes through the
 same edits as `--apply` and refuses the same excludes. Keys rebind in
 `~/.config/dots/keys.yaml` (`row.skip: [x]`).
 
