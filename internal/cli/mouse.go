@@ -29,9 +29,20 @@ import (
 //   - confirm: a click outside is confirm.no; a click inside does nothing,
 //     since only y writes.
 //   - the filter/edit input: ignored. A click never types or submits.
+//   - a drag, in any mode, selects text inside the pane under the press
+//     (triage_selection.go); a double or triple click in a text pane selects
+//     a word or a line. Neither ever decides, types or writes.
 func (m triModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.w < 40 || m.h < 8 || m.mode == modeInput {
+	if m.w < 40 || m.h < 8 {
 		return m, nil
+	}
+	// The selection sees every event before any click handling, and before
+	// a click dismisses a toast: the panes it hit-tests are the ones on the
+	// frame the press landed on. A press that does not move stays the click
+	// below.
+	m, copyCmd, consumed := m.selectMouse(msg)
+	if consumed || m.mode == modeInput {
+		return m, copyCmd
 	}
 	if mouse.IsLeftPress(msg) {
 		m.toasts = toast.OnKey(m.toasts) // a click is a keystroke for toasts

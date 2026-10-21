@@ -101,7 +101,14 @@ func (m triModel) header() string {
 	return render.Truncate(m.th.Title.Render("dots triage")+m.th.Muted.Render(info), m.w)
 }
 
+// View draws the selection last, over the panes the mouse used.
 func (m triModel) View() string {
+	return m.drag.Render(m.view(), m.selectionPanes(), selectionStyle)
+}
+
+// view is the frame without the selection: what a selection reads its text
+// from, so a highlight style never leaks into a copy.
+func (m triModel) view() string {
 	if m.w < 40 || m.h < 8 {
 		return render.FitLines("terminal too small", m.w, m.h)
 	}
