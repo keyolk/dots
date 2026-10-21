@@ -17,6 +17,7 @@ import (
 	"github.com/keyolk/tuikit/keys"
 	"github.com/keyolk/tuikit/list"
 	"github.com/keyolk/tuikit/mouse"
+	"github.com/keyolk/tuikit/selection"
 	"github.com/keyolk/tuikit/theme"
 	"github.com/keyolk/tuikit/toast"
 
@@ -75,7 +76,10 @@ type triModel struct {
 	groupCur int
 	helpOff  int
 
-	clicks   mouse.Clicks
+	clicks mouse.Clicks
+	// drag is the drag selection (triage_selection.go), cleared where
+	// clicks is.
+	drag     selection.Selection
 	now      func() time.Time // test clock; nil means time.Now
 	scanGen  async.Gen
 	applying async.Flight
@@ -205,10 +209,14 @@ func (m triModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applied(msg)
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
+	case selection.CopiedMsg:
+		return m.noteCopied(msg)
 	case tea.KeyMsg:
 		// Any key between two clicks breaks a double click; reset here, not in
 		// the mouse path, which never goes through a KeyMsg.
 		m.clicks = mouse.Clicks{}
+		// A key ends the drag selection too, as it does in the mod engine.
+		m.drag.Clear()
 		m.toasts = toast.OnKey(m.toasts)
 		if m.mode == modeInput {
 			return m.inputKey(msg)
