@@ -9,6 +9,7 @@ import (
 	"github.com/keyolk/tuikit/input"
 	"github.com/keyolk/tuikit/keys"
 	"github.com/keyolk/tuikit/render"
+	"github.com/keyolk/tuikit/selection"
 	"github.com/keyolk/tuikit/toast"
 )
 
@@ -103,7 +104,7 @@ func (m triModel) header() string {
 
 // View draws the selection last, over the panes the mouse used.
 func (m triModel) View() string {
-	return m.drag.Render(m.view(), m.selectionPanes(), selectionStyle)
+	return m.drag.Render(m.view(), m.selectionPanes(), selection.DefaultStyle())
 }
 
 // view is the frame without the selection: what a selection reads its text
