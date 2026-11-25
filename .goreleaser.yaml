@@ -1,0 +1,39 @@
+version: 2
+
+project_name: dots
+
+builds:
+  - main: .
+    binary: dots
+    ldflags:
+      # Same stamp the Makefile sets, so a released binary reports its tag in
+      # --version exactly as a local `make install` would.
+      - -s -w -X main.version={{.Tag}}
+    env:
+      # Static binary: a warren workspace installs it with no toolchain and
+      # no assumption about the host's libc.
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  # The workspace installer looks for <name>_<version>_<os>_<arch>.tar.gz with
+  # the binary at the archive root; keep this name stable.
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

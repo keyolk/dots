@@ -1,0 +1,82 @@
+name: release
+
+# Every merge to main publishes the next patch release (latest v* tag + 1; the
+# first one is v0.1.0), so what a warren workspace installs is never older than
+# main. Push a v* tag yourself for a minor/major bump; later merges count up
+# from it. Docs-only merges do not release. Pull requests and
+# workflow_dispatch build every platform in snapshot mode, publish nothing,
+# and keep the archives on the run so the PR proves the release still builds.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One release run at a time, never cancelled mid-upload, so two quick merges
+# cannot both pick the same next patch number. GitHub keeps only the newest
+# pending run; a merge whose run is dropped ships in the next one. Snapshot
+# builds of a PR get their own group so a merge to main cannot displace a
+# PR's pending check (and vice versa).
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('snapshot-{0}', github.ref) || 'release' }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Next tag
+        id: tag
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        shell: bash
+        run: |
+          if [ -n "$(git tag --points-at HEAD 'v*')" ]; then
+            echo "HEAD is already released as $(git tag --points-at HEAD 'v*')"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last=$(git tag -l 'v[0-9]*' --sort=-v:refname | head -1)
+          if [ -z "$last" ]; then
+            # No release yet: start the series at v0.1.0, not v0.0.1.
+            tag="v0.1.0"
+          else
+            last=${last#v}
+            IFS=. read -r ma mi pa <<<"${last%%-*}"
+            tag="v$ma.$mi.$((pa + 1))"
+          fi
+          # goreleaser releases the tag on HEAD, so it must exist and be pushed
+          # first. A tag pushed with this token starts no workflow, so it does
+          # not trigger a second run of this one.
+          git tag "$tag"
+          git push origin "$tag"
+          echo "releasing $tag"
+
+      - uses: goreleaser/goreleaser-action@v6
+        if: steps.tag.outputs.skip != 'true'
+        with:
+          version: "~> v2"
+          args: ${{ github.event_name == 'push' && 'release --clean' || 'release --clean --snapshot' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*.tar.gz
+          if-no-files-found: error
